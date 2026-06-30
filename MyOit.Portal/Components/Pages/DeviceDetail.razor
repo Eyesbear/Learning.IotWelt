@@ -1,0 +1,54 @@
+@page "/devices/{Id:int}"
+@inject NavigationManager Navigation
+@using Microsoft.Identity.Web
+@inject IotWeltApiClient Api
+@inject NavigationManager Nav
+@attribute [Authorize]
+
+<PageTitle>@(device?.Name ?? "Gerät")</PageTitle>
+
+@if (device == null)
+{
+    <p>Lade...</p>
+}
+else
+{
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <button class="btn btn-outline-secondary btn-sm" @onclick='() => Nav.NavigateTo("/dashboard")'>
+            &larr; Dashboard
+        </button>
+        <h2 class="mb-0">@device.Name</h2>
+        @if (device.Standort != null)
+        {
+            <span class="badge bg-secondary">@device.Standort</span>
+        }
+        @if (device.ZuerstGesehen.HasValue)
+        {
+            <small class="text-muted">seit @device.ZuerstGesehen.Value.ToLocalTime().ToString("dd.MM.yyyy")</small>
+        }
+    </div>
+
+    <KlimaVerlauf DeviceId="@Id" />
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+    private DateTime lastRefresh = DateTime.UtcNow;
+    private DeviceDashboardDto? device;
+
+    protected override async Task OnParametersSetAsync()
+        => await Refresh();
+
+    private async Task Refresh()
+    {
+        try
+        {
+            device = await Api.GetDeviceAsync(Id);
+            lastRefresh = DateTime.UtcNow;
+        }
+        catch (MicrosoftIdentityWebChallengeUserException)
+        {
+            Navigation.NavigateTo("MicrosoftIdentity/Account/SignIn", forceLoad: true);
+        }
+    }
+}

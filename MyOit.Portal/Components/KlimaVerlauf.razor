@@ -1,0 +1,89 @@
+@inject IotWeltApiClient Api
+
+<div class="mb-3 d-flex align-items-center gap-3">
+    <label class="form-label mb-0">Zeitraum:</label>
+    <select class="form-select form-select-sm w-auto" @onchange="OnMinutesChanged">
+        <option value="60" selected="@(Minutes == 60)">Letzte Stunde</option>
+        <option value="120" selected="@(Minutes == 120)">Letzte 2 Stunden</option>
+        <option value="240" selected="@(Minutes == 240)">Letzte 4 Stunden</option>
+    </select>
+</div>
+
+@if (verlauf == null)
+{
+    <p class="text-muted">Lade Verlaufsdaten...</p>
+}
+else if (verlauf.Count == 0)
+{
+    <p class="text-muted">Keine Daten für den gewählten Zeitraum vorhanden.</p>
+}
+else
+{
+    <h6 class="text-muted mt-3">Temperatur (°C)</h6>
+    <RadzenChart Style="height:220px">
+        <RadzenLineSeries Data="@verlauf"
+                          CategoryProperty="LocalZeit"
+                          ValueProperty="Temperatur"
+                          Title="Temperatur"
+                          Stroke="#e74c3c"
+                          StrokeWidth="2">
+            <RadzenSeriesDataLabels Visible="false" />
+        </RadzenLineSeries>
+        <RadzenCategoryAxis FormatString="{0:HH:mm}" />
+        <RadzenValueAxis Min="10" Max="40">
+            <RadzenAxisTitle Text="°C" />
+        </RadzenValueAxis>
+        <RadzenLegend Visible="false" />
+    </RadzenChart>
+
+    <h6 class="text-muted mt-3">Luftfeuchte (%)</h6>
+    <RadzenChart Style="height:220px">
+        <RadzenLineSeries Data="@verlauf"
+                          CategoryProperty="LocalZeit"
+                          ValueProperty="RelativeFeuchte"
+                          Title="Luftfeuchte"
+                          Stroke="#2980b9"
+                          StrokeWidth="2">
+            <RadzenSeriesDataLabels Visible="false" />
+        </RadzenLineSeries>
+        <RadzenCategoryAxis FormatString="{0:HH:mm}" />
+        <RadzenValueAxis>
+            <RadzenAxisTitle Text="%" />
+        </RadzenValueAxis>
+        <RadzenLegend Visible="false" />
+    </RadzenChart>
+}
+
+@code {
+    [Parameter] public int DeviceId { get; set; }
+
+    private int Minutes { get; set; } = 60;
+    private List<VerlaufViewModel>? verlauf;
+
+    protected override async Task OnParametersSetAsync()
+        => await Laden();
+
+    private async Task OnMinutesChanged(ChangeEventArgs e)
+    {
+        Minutes = int.Parse(e.Value?.ToString() ?? "60");
+        await Laden();
+    }
+
+    private async Task Laden()
+    {
+        var raw = await Api.GetKlimaVerlaufAsync(DeviceId, Minutes);
+        verlauf = raw.Select(p => new VerlaufViewModel
+        {
+            LocalZeit = p.Zeitstempel.ToLocalTime(),
+            Temperatur = p.Temperatur,
+            RelativeFeuchte = p.RelativeFeuchte
+        }).ToList();
+    }
+
+    private class VerlaufViewModel
+    {
+        public DateTime LocalZeit { get; set; }
+        public double? Temperatur { get; set; }
+        public double? RelativeFeuchte { get; set; }
+    }
+}
