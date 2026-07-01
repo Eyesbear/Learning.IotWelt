@@ -1,0 +1,285 @@
+@page "/admin/users"
+@attribute [Authorize(Policy = "CanManageUsers")]
+@rendermode InteractiveServer
+
+@inject GraphUserService GraphService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager NavManager
+
+<PageTitle>Benutzerverwaltung</PageTitle>
+<h2>Benutzerverwaltung</h2>
+
+@if (_message is not null)
+{
+    <div class="alert @(_isError ? "alert-danger" : "alert-success") alert-dismissible">
+        @_message
+        <button type="button" class="btn-close" @onclick="() => _message = null"></button>
+    </div>
+}
+
+<h4 class="mt-4">Aktuelle Zuweisungen</h4>
+
+@if (_assignments is null)
+{
+    <p><em>Wird geladen…</em></p>
+}
+else if (_assignments.Count == 0)
+{
+    <p class="text-muted">Keine Zuweisungen vorhanden.</p>
+}
+else
+{
+    <table class="table table-striped table-sm" style="max-width: 600px;">
+        <thead class="table-dark">
+            <tr>
+                <th>Name</th>
+                <th>Rolle</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var a in _assignments)
+            {
+                <tr>
+                    <td>@a.DisplayName</td>
+                    <td><span class="badge bg-secondary">@a.RoleName</span></td>
+                    <td>
+                        @if (_manageableRoles.Contains(a.RoleName))
+                        {
+                            <button class="btn btn-sm btn-outline-danger"
+                                    @onclick="() => RemoveAsync(a)"
+                                    disabled="@_isBusy">
+                                Entfernen
+                            </button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<hr />
+<h4>Externen Benutzer einladen</h4>
+<p class="text-muted small">Sendet eine Entra-Einladungsmail und weist die Rolle direkt zu. Der Benutzer braucht keinen Microsoft-Account.</p>
+
+<div class="row g-2 align-items-end mb-3" style="max-width: 600px;">
+    <div class="col-md-5">
+        <label class="form-label">E-Mail-Adresse</label>
+        <input class="form-control" type="email" @bind="_inviteEmail" placeholder="benutzer@beispiel.de" />
+    </div>
+    <div class="col-md-3">
+        <label class="form-label">Rolle</label>
+        <select class="form-select" @bind="_inviteRole">
+            @foreach (var role in _manageableRoles)
+            {
+                <option value="@role">@role</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary" @onclick="InviteAsync"
+                disabled="@(string.IsNullOrWhiteSpace(_inviteEmail) || _isBusy)">
+            Einladen &amp; Zuweisen
+        </button>
+    </div>
+</div>
+
+<hr />
+<h4>Vorhandenen Benutzer hinzufügen</h4>
+
+<div class="row g-2 align-items-end mb-3" style="max-width: 600px;">
+    <div class="col">
+        <label class="form-label">Name oder E-Mail-Adresse</label>
+        <input class="form-control" @bind="_searchQuery" @bind:event="oninput"
+               placeholder="mind. 2 Zeichen eingeben…" />
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-secondary" @onclick="SearchAsync"
+                disabled="@(_searchQuery.Length < 2 || _isBusy)">
+            Suchen
+        </button>
+    </div>
+</div>
+
+@if (_searchResults.Count > 0)
+{
+    <ul class="list-group mb-3" style="max-width: 500px;">
+        @foreach (var u in _searchResults)
+        {
+            <li class="list-group-item list-group-item-action"
+                style="cursor: pointer;"
+                @onclick="() => SelectUser(u)">
+                <strong>@u.DisplayName</strong><br />
+                <small class="text-muted">@u.Upn</small>
+            </li>
+        }
+    </ul>
+}
+
+@if (_selectedUser is not null)
+{
+    <div class="card" style="max-width: 420px;">
+        <div class="card-body">
+            <h6 class="card-subtitle mb-2 text-muted">Ausgewählt</h6>
+            <p class="card-text mb-3">
+                <strong>@_selectedUser.DisplayName</strong><br />
+                <small class="text-muted">@_selectedUser.Upn</small>
+            </p>
+            <div class="mb-3">
+                <label class="form-label">Rolle zuweisen</label>
+                <select class="form-select" @bind="_selectedRole">
+                    @foreach (var role in _manageableRoles)
+                    {
+                        <option value="@role">@role</option>
+                    }
+                </select>
+            </div>
+            <button class="btn btn-primary" @onclick="AssignAsync" disabled="@_isBusy">
+                Zuweisen
+            </button>
+            <button class="btn btn-outline-secondary ms-2" @onclick="ClearSelection">
+                Abbrechen
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    private List<UserRoleAssignment>? _assignments;
+    private List<string> _manageableRoles = [];
+    private List<UserSearchResult> _searchResults = [];
+    private UserSearchResult? _selectedUser;
+    private string _searchQuery = "";
+    private string _selectedRole = "";
+    private string _inviteEmail = "";
+    private string _inviteRole = "";
+    private string? _message;
+    private bool _isError;
+    private bool _isBusy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        _manageableRoles = GraphService.GetManageableRoles(auth.User);
+        if (_manageableRoles.Count > 0)
+        {
+            _selectedRole = _manageableRoles[0];
+            _inviteRole = _manageableRoles[0];
+        }
+        await LoadAssignmentsAsync();
+    }
+
+    private async Task LoadAssignmentsAsync()
+    {
+        try
+        {
+            _assignments = await GraphService.GetAssignedUsersAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Fehler beim Laden der Zuweisungen: {ex.Message}");
+        }
+    }
+
+    private async Task InviteAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_inviteEmail)) return;
+        try
+        {
+            _isBusy = true;
+            await GraphService.InviteAndAssignRoleAsync(_inviteEmail, _inviteRole, NavManager.BaseUri);
+            ShowSuccess($"Einladung an {_inviteEmail} gesendet und Rolle {_inviteRole} zugewiesen.");
+            _inviteEmail = "";
+            await LoadAssignmentsAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Fehler beim Einladen: {ex.Message}");
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+
+    private async Task SearchAsync()
+    {
+        _searchResults = [];
+        _selectedUser = null;
+        if (_searchQuery.Length < 2) return;
+        try
+        {
+            _isBusy = true;
+            _searchResults = await GraphService.SearchUsersAsync(_searchQuery);
+            if (_searchResults.Count == 0)
+                ShowInfo("Keine Benutzer gefunden.");
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Suchfehler: {ex.Message}");
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+
+    private void SelectUser(UserSearchResult user)
+    {
+        _selectedUser = user;
+        _searchResults = [];
+        _message = null;
+    }
+
+    private void ClearSelection()
+    {
+        _selectedUser = null;
+        _searchQuery = "";
+        _message = null;
+    }
+
+    private async Task AssignAsync()
+    {
+        if (_selectedUser is null || string.IsNullOrEmpty(_selectedRole)) return;
+        try
+        {
+            _isBusy = true;
+            await GraphService.AssignRoleAsync(_selectedUser.UserId, _selectedRole);
+            ShowSuccess($"{_selectedUser.DisplayName} wurde als {_selectedRole} hinzugefügt.");
+            ClearSelection();
+            await LoadAssignmentsAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Fehler beim Zuweisen: {ex.Message}");
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+
+    private async Task RemoveAsync(UserRoleAssignment assignment)
+    {
+        try
+        {
+            _isBusy = true;
+            await GraphService.RemoveAssignmentAsync(assignment.AssignmentId);
+            ShowSuccess($"{assignment.DisplayName} wurde als {assignment.RoleName} entfernt.");
+            await LoadAssignmentsAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Fehler beim Entfernen: {ex.Message}");
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+
+    private void ShowSuccess(string msg) { _message = msg; _isError = false; }
+    private void ShowError(string msg) { _message = msg; _isError = true; }
+    private void ShowInfo(string msg) { _message = msg; _isError = false; }
+}

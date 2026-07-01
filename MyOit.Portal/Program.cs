@@ -4,6 +4,7 @@ using Microsoft.Identity.Web.UI;
 using MyOit.Portal.Components;
 using MyOit.Portal.Services;
 using Radzen;
+using System.Security.Claims;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -23,7 +24,19 @@ builder.Services.AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
 builder.Services.AddControllersWithViews()
     .AddMicrosoftIdentityUI();
 
-builder.Services.AddAuthorization();
+var superAdminOid = builder.Configuration["SuperAdmin:Oid"] ?? "";
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("SuperAdmin", policy =>
+        policy.RequireAssertion(ctx =>
+            GetOid(ctx.User) == superAdminOid));
+
+    options.AddPolicy("CanManageUsers", policy =>
+        policy.RequireAssertion(ctx =>
+            GetOid(ctx.User) == superAdminOid || ctx.User.IsInRole("UserAdmin")));
+});
+
+builder.Services.AddScoped<GraphUserService>();
 builder.Services.AddRadzenComponents();
 
 builder.Services.AddHttpClient<IotWeltApiClient>(client =>
@@ -54,3 +67,7 @@ app.MapRazorComponents<App>()
 app.MapControllers();
 
 app.Run();
+
+static string? GetOid(ClaimsPrincipal user) =>
+    user.FindFirstValue("oid") ??
+    user.FindFirstValue("http://schemas.microsoft.com/identity/claims/objectidentifier");
