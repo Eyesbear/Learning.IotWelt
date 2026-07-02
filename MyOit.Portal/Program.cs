@@ -40,7 +40,7 @@ builder.Services.AddScoped<GraphUserService>();
 builder.Services.AddRadzenComponents();
 
 builder.Services.AddHttpClient<IotWeltApiClient>(client =>
-    client.BaseAddress = new Uri("http://iotwelt-api"));
+    client.BaseAddress = new Uri(builder.Configuration["IotWeltApi:BaseUrl"] ?? "http://iotwelt-api"));
 
 var app = builder.Build();
 
