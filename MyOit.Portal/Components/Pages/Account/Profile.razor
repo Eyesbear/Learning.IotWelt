@@ -1,0 +1,133 @@
+@page "/account/profile"
+@attribute [Authorize]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+@inject IotWeltApiClient Api
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+@using Microsoft.Identity.Web
+
+<PageTitle>Mein Profil</PageTitle>
+
+<div class="container" style="max-width: 620px;">
+    <h2 class="mb-4">Mein Profil</h2>
+
+    @if (isLoading)
+    {
+        <p>Wird geladen…</p>
+    }
+    else
+    {
+        <div class="card mb-3">
+            <div class="card-body">
+                <h5 class="card-title">Konto</h5>
+                <dl class="row mb-0">
+                    <dt class="col-sm-4">Name</dt>
+                    <dd class="col-sm-8">@(userName ?? "—")</dd>
+                    <dt class="col-sm-4">E-Mail</dt>
+                    <dd class="col-sm-8">@(userEmail ?? "—")</dd>
+                </dl>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-body">
+                <h5 class="card-title">Geräte-ID</h5>
+                <p class="text-muted small mb-2">
+                    Diese ID wird in Ihren ESP32-Geräten konfiguriert und ordnet deren Messdaten Ihrem Konto zu.
+                </p>
+                @if (customerId is not null)
+                {
+                    <div class="input-group">
+                        <input type="text" class="form-control font-monospace fw-semibold"
+                               value="@customerId" readonly />
+                        <button class="btn btn-outline-secondary" @onclick="CopyCustomerId">
+                            @(copied ? "✓ Kopiert" : "Kopieren")
+                        </button>
+                    </div>
+                }
+                else
+                {
+                    <div class="alert alert-warning mb-0">
+                        Geräte-ID konnte nicht geladen werden.<br />
+                        @if (loadError is not null)
+                        {
+                            <small class="font-monospace">@loadError</small>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Konto verwalten</h5>
+                <div class="d-flex gap-2 flex-wrap">
+                    <a href="MicrosoftIdentity/Account/SignOut" class="btn btn-outline-secondary">
+                        Abmelden
+                    </a>
+                    <a href="/account/delete" class="btn btn-outline-danger">
+                        Konto löschen
+                    </a>
+                </div>
+                <p class="text-muted small mt-3 mb-0">
+                    <strong>Passwort ändern:</strong> Melden Sie sich ab und wählen Sie auf der Anmeldeseite
+                    „Passwort vergessen".
+                </p>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool isLoading = true;
+    private string? userName;
+    private string? userEmail;
+    private string? customerId;
+    private string? loadError;
+    private bool copied;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        // External ID liefert given_name + family_name aus dem User Flow
+        var given = user.FindFirst("given_name")?.Value;
+        var family = user.FindFirst("family_name")?.Value;
+        userName = (given + " " + family).Trim();
+        if (string.IsNullOrEmpty(userName))
+            userName = user.FindFirst("name")?.Value;
+
+        userEmail = user.FindFirst("email")?.Value
+                 ?? user.FindFirst("preferred_username")?.Value;
+
+        try
+        {
+            customerId = await Api.GetCustomerIdAsync();
+        }
+        catch (MicrosoftIdentityWebChallengeUserException)
+        {
+            Navigation.NavigateTo("MicrosoftIdentity/Account/SignIn", forceLoad: true);
+            return;
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+
+        isLoading = false;
+    }
+
+    private async Task CopyCustomerId()
+    {
+        if (customerId is null) return;
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", customerId);
+        copied = true;
+        StateHasChanged();
+        await Task.Delay(2000);
+        copied = false;
+        StateHasChanged();
+    }
+}

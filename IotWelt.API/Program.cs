@@ -1,4 +1,5 @@
 using IotWelt.API.Data;
+using IotWelt.API.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Identity.Web;
 using Scalar.AspNetCore;
@@ -14,14 +15,26 @@ builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
-// Authentication über Azure Identity
+// JWT-Validierung gegen Entra External ID
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
+    .AddJwtBearer(options =>
+    {
+        options.UseSecurityTokenValidators = true;
+        options.MetadataAddress = builder.Configuration["AzureAd:MetadataAddress"]!;
+        options.TokenValidationParameters = new()
+        {
+            ValidateIssuer = true,
+            ValidIssuer = builder.Configuration["AzureAd:ValidIssuer"],
+            ValidateAudience = true,
+            ValidAudience = builder.Configuration["AzureAd:ClientId"],
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true
+        };
+    });
 
-builder.Services.AddAuthorization(options =>
-    options.AddPolicy("SensorWrite", policy =>
-        policy.RequireRole("Sensor.Write")));
+builder.Services.AddAuthorization();
+builder.Services.AddScoped<CustomerService>();
 
 var app = builder.Build();
 

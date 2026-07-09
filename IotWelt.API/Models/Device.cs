@@ -20,4 +20,7 @@ public class Device
     public string? Standort { get; set; }
 
     public DateTime? ZuerstGesehen { get; set; }
+
+    [MaxLength(16)]
+    public string? CustomerId { get; set; }
 }

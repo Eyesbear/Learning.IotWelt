@@ -1,5 +1,6 @@
 using IotWelt.API.Data;
 using IotWelt.API.Models;
+using IotWelt.API.Services;
 using IotWelt.Common;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -10,18 +11,32 @@ namespace IotWelt.API.Controllers;
 [Authorize]
 [ApiController]
 [Route("api/[controller]")]
-public class DevicesController(AppDbContext db) : ControllerBase
+public class DevicesController(AppDbContext db, CustomerService customers) : ControllerBase
 {
+    private Task<string?> GetCustomerIdAsync() => customers.EnsureCustomerIdAsync(User);
+
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Device>>> GetAll()
-        => await db.Devices.ToListAsync();
+    {
+        var customerId = await GetCustomerIdAsync();
+        return await db.Devices
+            .Where(d => d.CustomerId == customerId)
+            .ToListAsync();
+    }
 
     [HttpGet("dashboard")]
     public async Task<ActionResult<IEnumerable<DeviceDashboardDto>>> GetDashboard()
     {
-        var devices = await db.Devices.ToListAsync();
+        var customerId = await GetCustomerIdAsync();
+
+        var devices = await db.Devices
+            .Where(d => d.CustomerId == customerId)
+            .ToListAsync();
+
+        var deviceIds = devices.Select(d => d.Id).ToList();
 
         var maxIdPerDevice = await db.RaumKlimaLogs
+            .Where(l => deviceIds.Contains(l.DeviceId))
             .GroupBy(l => l.DeviceId)
             .Select(g => g.Max(l => l.Id))
             .ToListAsync();
@@ -53,13 +68,16 @@ public class DevicesController(AppDbContext db) : ControllerBase
     [HttpGet("{id}")]
     public async Task<ActionResult<Device>> GetById(int id)
     {
-        var device = await db.Devices.FindAsync(id);
+        var customerId = await GetCustomerIdAsync();
+        var device = await db.Devices.FirstOrDefaultAsync(
+            d => d.Id == id && d.CustomerId == customerId);
         return device is null ? NotFound() : Ok(device);
     }
 
     [HttpPost]
     public async Task<ActionResult<Device>> Create(Device device)
     {
+        device.CustomerId = await GetCustomerIdAsync();
         db.Devices.Add(device);
         await db.SaveChangesAsync();
         return CreatedAtAction(nameof(GetById), new { id = device.Id }, device);
@@ -71,6 +89,13 @@ public class DevicesController(AppDbContext db) : ControllerBase
         if (id != device.Id)
             return BadRequest();
 
+        var customerId = await GetCustomerIdAsync();
+        var existing = await db.Devices.AsNoTracking().FirstOrDefaultAsync(
+            d => d.Id == id && d.CustomerId == customerId);
+        if (existing is null)
+            return NotFound();
+
+        device.CustomerId = customerId;
         db.Entry(device).State = EntityState.Modified;
 
         try
@@ -90,7 +115,9 @@ public class DevicesController(AppDbContext db) : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var device = await db.Devices.FindAsync(id);
+        var customerId = await GetCustomerIdAsync();
+        var device = await db.Devices.FirstOrDefaultAsync(
+            d => d.Id == id && d.CustomerId == customerId);
         if (device is null)
             return NotFound();
 

@@ -6,4 +6,5 @@ public class SensorDataDto
     public double? Temperatur { get; set; }
     public double? RelativeFeuchte { get; set; }
     public bool WasserAlarm { get; set; }
+    public string? CustomerId { get; set; }
 }

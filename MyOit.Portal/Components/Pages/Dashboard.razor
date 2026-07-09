@@ -101,6 +101,10 @@ else
         {
             Navigation.NavigateTo("MicrosoftIdentity/Account/SignIn", forceLoad: true);
         }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            Navigation.NavigateTo("MicrosoftIdentity/Account/SignIn", forceLoad: true);
+        }
     }
 
     private static bool IsOnline(DeviceDashboardDto d)

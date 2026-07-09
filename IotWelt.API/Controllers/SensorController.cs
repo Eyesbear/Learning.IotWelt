@@ -1,12 +1,12 @@
 using IotWelt.API.Data;
 using IotWelt.API.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.AspNetCore.Authorization;
 
 namespace IotWelt.API.Controllers;
 
-[Authorize(Policy = "SensorWrite")]
+[AllowAnonymous]
 [ApiController]
 [Route("api/[controller]")]
 public class SensorController(AppDbContext db) : ControllerBase
@@ -14,12 +14,37 @@ public class SensorController(AppDbContext db) : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Report(SensorDataDto data)
     {
-        var device = await db.Devices.FirstOrDefaultAsync(d => d.Name == data.DeviceName);
-        if (device is null)
+        Device? device;
+
+        if (!string.IsNullOrEmpty(data.CustomerId))
         {
-            device = new Device { Name = data.DeviceName, ZuerstGesehen = DateTime.UtcNow };
-            db.Devices.Add(device);
-            await db.SaveChangesAsync();
+            // Neuer Modus: Device per CustomerId + DeviceName suchen
+            device = await db.Devices.FirstOrDefaultAsync(
+                d => d.CustomerId == data.CustomerId && d.Name == data.DeviceName);
+
+            if (device is null)
+            {
+                // Auto-Create: neues Device für diesen Kunden anlegen
+                device = new Device
+                {
+                    Name = data.DeviceName,
+                    CustomerId = data.CustomerId,
+                    ZuerstGesehen = DateTime.UtcNow
+                };
+                db.Devices.Add(device);
+                await db.SaveChangesAsync();
+            }
+        }
+        else
+        {
+            // Legacy-Modus (Übergang): Suche nur per DeviceName, kein CustomerId-Check
+            device = await db.Devices.FirstOrDefaultAsync(d => d.Name == data.DeviceName);
+            if (device is null)
+            {
+                device = new Device { Name = data.DeviceName, ZuerstGesehen = DateTime.UtcNow };
+                db.Devices.Add(device);
+                await db.SaveChangesAsync();
+            }
         }
 
         db.RaumKlimaLogs.Add(new RaumKlimaLog

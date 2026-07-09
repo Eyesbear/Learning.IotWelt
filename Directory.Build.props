@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup>
+    <VersionPrefix>0.2.0</VersionPrefix>
+    <Authors>Thorsten Mann</Authors>
+    <Company>eyes-IT</Company>
+  </PropertyGroup>
+</Project>
