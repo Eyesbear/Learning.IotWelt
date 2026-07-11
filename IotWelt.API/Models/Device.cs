@@ -23,4 +23,7 @@ public class Device
 
     [MaxLength(16)]
     public string? CustomerId { get; set; }
+
+    [MaxLength(200)]
+    public string? Caption { get; set; }
 }

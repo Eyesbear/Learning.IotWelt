@@ -13,4 +13,10 @@ public class CustomerProfile
     // 16-stellige ID für ESP32-Geräte
     [Required, MaxLength(16)]
     public string CustomerId { get; set; } = string.Empty;
+
+    [MaxLength(200)]
+    public string? DisplayName { get; set; }
+
+    [MaxLength(200)]
+    public string? Email { get; set; }
 }

@@ -11,4 +11,6 @@ public class DeviceDashboardDto
     public double? RelativeFeuchte { get; set; }
     public bool? Wassertank { get; set; }
     public DateTime? ZuletztGemeldet { get; set; }
+    public string? Caption { get; set; }
+    public string? CustomerId { get; set; }
 }

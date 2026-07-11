@@ -6,6 +6,31 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 
 ---
 
+## [0.3.0] — 2026-07-11
+
+### Added
+- **Geräteverwaltung** (`/my-devices`): Nutzer können eigene Geräte bearbeiten (Name, Standort, Caption) und löschen — löscht Logs kaskadierend
+- **Admin: Geräteverwaltung** (`/admin/devices`): alle Geräte mit Server-Paging (10/Seite), Filter nach Kunden-ID, Inline-Edit inkl. Kunden-ID-Zuweisung
+- **Admin: Benutzerverwaltung** (`/admin/users`): alle registrierten Nutzer mit Kunden-ID, Admin-Rolle per Toggle zuweisen/entziehen, Nutzer löschen (CIAM + DB)
+- **App-Rolle „Admin"** in Entra External ID: steuert Sichtbarkeit der Admin-Seiten und API-Zugriff
+- `Device.Caption` — optionales Beschreibungsfeld (max. 200 Zeichen) für Geräte
+- `CustomerProfile.DisplayName` + `CustomerProfile.Email` — werden automatisch beim Login aus JWT-Claims befüllt
+- `AdminController` (`/api/admin/*`): paginierte Geräteliste, Admin-CRUD ohne Ownership-Filter, Kunden-Übersicht, Kunden-Löschung mit Kaskade
+- Neue gemeinsame DTOs: `AdminDeviceDto`, `CustomerProfileDto`, `PagedResult<T>`, `DeviceUpdateDto`, `AdminDeviceUpdateDto`
+
+### Changed
+- `GraphUserService`: nutzt jetzt App-Token (Client Credentials, `GetAccessTokenForAppAsync`) statt delegiertem Token — delegierte Graph-Berechtigungen funktionieren für CIAM Directory-Ops nicht
+- `GraphUserService` in DI registriert (`AddScoped`)
+- `DevicesController.PUT`: nimmt jetzt `DeviceUpdateDto` statt Entity-Objekt
+- `DevicesController.GetDashboard`: liefert jetzt Caption + CustomerId im DTO
+- `CustomerService.EnsureCustomerIdAsync`: speichert DisplayName + Email bei jedem Login
+- NavMenu: „Meine Geräte" für alle Nutzer; Admin-Links nur für `Roles="Admin"`
+
+### Migrations
+- `20260711103837_AddCaptionAndOwnerInfo` — `Devices.Caption nvarchar(200)`, `CustomerProfiles.DisplayName nvarchar(200)`, `CustomerProfiles.Email nvarchar(200)`
+
+---
+
 ## [0.2.0] — 2026-07-10
 
 ### Added

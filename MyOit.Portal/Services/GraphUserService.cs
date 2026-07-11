@@ -12,22 +12,15 @@ public record UserSearchResult(string UserId, string DisplayName, string Upn);
 
 public class GraphUserService(
     ITokenAcquisition tokenAcquisition,
-    IConfiguration config,
-    AuthenticationStateProvider authStateProvider)
+    IConfiguration config)
 {
-    private static readonly string[] GraphScopes =
-    [
-        "https://graph.microsoft.com/User.ReadBasic.All",
-        "https://graph.microsoft.com/AppRoleAssignment.ReadWrite.All",
-        "https://graph.microsoft.com/User.Invite.All"
-    ];
-
     private ServicePrincipal? _sp;
 
     private async Task<GraphServiceClient> CreateClientAsync()
     {
-        var authState = await authStateProvider.GetAuthenticationStateAsync();
-        var token = await tokenAcquisition.GetAccessTokenForUserAsync(GraphScopes, user: authState.User);
+        // App-Level Token (Client Credentials) — zuverlässiger als delegiert für CIAM Directory-Ops
+        var token = await tokenAcquisition.GetAccessTokenForAppAsync(
+            "https://graph.microsoft.com/.default");
         return new GraphServiceClient(new BaseBearerTokenAuthenticationProvider(new StaticTokenProvider(token)));
     }
 
@@ -99,30 +92,10 @@ public class GraphUserService(
         });
     }
 
-    public async Task InviteAndAssignRoleAsync(string email, string roleName, string redirectUrl)
+    public async Task DeleteUserAsync(string userId)
     {
         var graph = await CreateClientAsync();
-        var invitation = await graph.Invitations.PostAsync(new Invitation
-        {
-            InvitedUserEmailAddress = email,
-            InviteRedirectUrl = redirectUrl,
-            SendInvitationMessage = true
-        });
-        var userId = invitation!.InvitedUser!.Id!;
-
-        // Guest object replicates asynchronously — retry until it's ready for role assignment
-        for (int attempt = 0; attempt < 4; attempt++)
-        {
-            try
-            {
-                await AssignRoleAsync(userId, roleName);
-                return;
-            }
-            catch when (attempt < 3)
-            {
-                await Task.Delay(TimeSpan.FromSeconds(2));
-            }
-        }
+        await graph.Users[userId].DeleteAsync();
     }
 
     public async Task RemoveAssignmentAsync(string assignmentId)
@@ -132,20 +105,7 @@ public class GraphUserService(
         await graph.ServicePrincipals[sp.Id].AppRoleAssignedTo[assignmentId].DeleteAsync();
     }
 
-    public List<string> GetManageableRoles(ClaimsPrincipal user)
-    {
-        if (IsSuperAdmin(user)) return ["TechAdmin", "UserAdmin", "User"];
-        if (user.IsInRole("UserAdmin")) return ["User"];
-        return [];
-    }
-
-    public bool IsSuperAdmin(ClaimsPrincipal user)
-    {
-        var superAdminOid = config["SuperAdmin:Oid"] ?? "";
-        var oid = user.FindFirstValue("oid") ??
-                  user.FindFirstValue("http://schemas.microsoft.com/identity/claims/objectidentifier");
-        return oid == superAdminOid;
-    }
+    public bool IsAdmin(ClaimsPrincipal user) => user.IsInRole("Admin");
 
     private sealed class StaticTokenProvider(string token) : IAccessTokenProvider
     {

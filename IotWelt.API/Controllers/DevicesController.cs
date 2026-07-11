@@ -54,6 +54,8 @@ public class DevicesController(AppDbContext db, CustomerService customers) : Con
                 Name = d.Name,
                 Typ = d.Typ,
                 Standort = d.Standort,
+                Caption = d.Caption,
+                CustomerId = d.CustomerId,
                 ZuerstGesehen = d.ZuerstGesehen,
                 Temperatur = log?.Temperatur,
                 RelativeFeuchte = log?.RelativeFeuchte,
@@ -84,31 +86,19 @@ public class DevicesController(AppDbContext db, CustomerService customers) : Con
     }
 
     [HttpPut("{id}")]
-    public async Task<IActionResult> Update(int id, Device device)
+    public async Task<IActionResult> Update(int id, DeviceUpdateDto dto)
     {
-        if (id != device.Id)
-            return BadRequest();
-
         var customerId = await GetCustomerIdAsync();
-        var existing = await db.Devices.AsNoTracking().FirstOrDefaultAsync(
+        var device = await db.Devices.FirstOrDefaultAsync(
             d => d.Id == id && d.CustomerId == customerId);
-        if (existing is null)
+        if (device is null)
             return NotFound();
 
-        device.CustomerId = customerId;
-        db.Entry(device).State = EntityState.Modified;
+        device.Name = dto.Name;
+        device.Standort = dto.Standort;
+        device.Caption = dto.Caption;
 
-        try
-        {
-            await db.SaveChangesAsync();
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            if (!await db.Devices.AnyAsync(d => d.Id == id))
-                return NotFound();
-            throw;
-        }
-
+        await db.SaveChangesAsync();
         return NoContent();
     }
 

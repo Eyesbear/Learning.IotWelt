@@ -1,0 +1,183 @@
+@page "/admin/devices"
+@attribute [Authorize(Roles = "Admin")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+@inject IotWeltApiClient Api
+@inject IJSRuntime JS
+@using IotWelt.Common
+
+<PageTitle>Geräteverwaltung</PageTitle>
+
+<h2 class="mb-3">Geräteverwaltung</h2>
+
+<div class="d-flex align-items-center gap-2 mb-3">
+    <label class="form-label mb-0">Filter Kunden-ID:</label>
+    <input class="form-control" style="width:220px"
+           @bind="filterCustomerId" @bind:event="oninput"
+           @onkeyup="@(async e => { if (e.Key == "Enter") await ReloadAsync(); })"
+           placeholder="z.B. ABC123XYZ456ABCD" />
+    <button class="btn btn-outline-secondary" @onclick="ReloadAsync">Suchen</button>
+    @if (!string.IsNullOrEmpty(filterCustomerId))
+    {
+        <button class="btn btn-outline-secondary" @onclick="ClearFilterAsync">✕ Zurücksetzen</button>
+    }
+</div>
+
+@if (errorMessage is not null)
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+
+<RadzenDataGrid @ref="grid"
+                Data="@devices"
+                TItem="AdminDeviceDto"
+                Count="@totalCount"
+                LoadData="@OnLoadData"
+                AllowPaging="true"
+                PageSize="10"
+                PagerHorizontalAlign="HorizontalAlign.Left"
+                ShowPagingSummary="true"
+                PagingSummaryFormat="Seite {0} von {1} ({2} Geräte)"
+                EditMode="DataGridEditMode.Single"
+                RowUpdate="@OnRowUpdate"
+                AllowSorting="false"
+                IsLoading="@isLoading">
+    <Columns>
+        <RadzenDataGridColumn TItem="AdminDeviceDto" Property="Name" Title="Name" Width="160px">
+            <EditTemplate Context="d">
+                <RadzenTextBox @bind-Value="editName" MaxLength="100" Style="width:100%" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="AdminDeviceDto" Property="Caption" Title="Beschreibung">
+            <EditTemplate Context="d">
+                <RadzenTextBox @bind-Value="editCaption" MaxLength="200" Style="width:100%" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="AdminDeviceDto" Property="Standort" Title="Standort" Width="120px">
+            <EditTemplate Context="d">
+                <RadzenTextBox @bind-Value="editStandort" MaxLength="24" Style="width:100%" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="AdminDeviceDto" Property="CustomerId" Title="Kunden-ID" Width="160px">
+            <EditTemplate Context="d">
+                <RadzenTextBox @bind-Value="editCustomerId" MaxLength="16" Style="width:100%" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="AdminDeviceDto" Property="OwnerDisplayName" Title="Inhaber" Width="150px">
+            <Template Context="d">
+                @(d.OwnerDisplayName ?? d.OwnerEmail ?? "—")
+            </Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="AdminDeviceDto" Property="ZuerstGesehen" Title="Erstellt" Width="120px" FormatString="{0:dd.MM.yy}" />
+        <RadzenDataGridColumn TItem="AdminDeviceDto" Title="Aktionen" Width="130px" Sortable="false">
+            <Template Context="d">
+                <RadzenButton Icon="edit" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                              Click="@(() => StartEdit(d))" class="me-1" />
+                <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small"
+                              Click="@(() => DeleteAsync(d))" />
+            </Template>
+            <EditTemplate Context="d">
+                <RadzenButton Icon="check" ButtonStyle="ButtonStyle.Success" Size="ButtonSize.Small"
+                              Click="@(() => grid!.UpdateRow(d))" class="me-1" />
+                <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                              Click="@(() => grid!.CancelEditRow(d))" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+    </Columns>
+</RadzenDataGrid>
+
+@code {
+    private RadzenDataGrid<AdminDeviceDto>? grid;
+    private List<AdminDeviceDto> devices = [];
+    private int totalCount;
+    private bool isLoading;
+    private string? errorMessage;
+    private string filterCustomerId = string.Empty;
+
+    // Edit-State für die aktuelle Zeile
+    private string editName = string.Empty;
+    private string? editCaption;
+    private string? editStandort;
+    private string? editCustomerId;
+
+    private void StartEdit(AdminDeviceDto d)
+    {
+        editName = d.Name;
+        editCaption = d.Caption;
+        editStandort = d.Standort;
+        editCustomerId = d.CustomerId;
+        grid!.EditRow(d);
+    }
+
+    private async Task OnLoadData(LoadDataArgs args)
+    {
+        isLoading = true;
+        try
+        {
+            var result = await Api.GetAdminDevicesAsync(args.Skip ?? 0, args.Top ?? 10, filterCustomerId);
+            devices = result.Items;
+            totalCount = result.TotalCount;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        if (grid is not null)
+            await grid.Reload();
+    }
+
+    private async Task ClearFilterAsync()
+    {
+        filterCustomerId = string.Empty;
+        await ReloadAsync();
+    }
+
+    private async Task OnRowUpdate(AdminDeviceDto d)
+    {
+        try
+        {
+            await Api.AdminUpdateDeviceAsync(d.Id,
+                new AdminDeviceUpdateDto(editName, editStandort, editCaption, editCustomerId));
+
+            // Lokale Anzeige aktualisieren
+            var idx = devices.IndexOf(d);
+            if (idx >= 0)
+                devices[idx] = d with
+                {
+                    Name = editName,
+                    Caption = editCaption,
+                    Standort = editStandort,
+                    CustomerId = editCustomerId
+                };
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+    }
+
+    private async Task DeleteAsync(AdminDeviceDto d)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            $"Gerät \"{d.Name}\" und alle Messdaten löschen?");
+        if (!ok) return;
+
+        try
+        {
+            await Api.AdminDeleteDeviceAsync(d.Id);
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+    }
+}

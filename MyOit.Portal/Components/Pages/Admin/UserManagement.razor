@@ -1,7 +1,158 @@
 @page "/admin/users"
-@attribute [Authorize]
-@rendermode InteractiveServer
+@attribute [Authorize(Roles = "Admin")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+@inject IotWeltApiClient Api
+@inject GraphUserService Graph
+@inject IJSRuntime JS
+@using IotWelt.Common
 
 <PageTitle>Benutzerverwaltung</PageTitle>
-<h2>Benutzerverwaltung</h2>
-<p>Wird im Rahmen des External ID Umbaus neu implementiert.</p>
+
+<h2 class="mb-4">Benutzerverwaltung</h2>
+
+@if (errorMessage is not null)
+{
+    <div class="alert alert-danger mb-3">@errorMessage</div>
+}
+
+@if (isLoading)
+{
+    <p>Wird geladen…</p>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Name</th>
+                    <th>E-Mail</th>
+                    <th>Kunden-ID</th>
+                    <th>Admin</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in userRows)
+                {
+                    <tr>
+                        <td>@(row.Profile.DisplayName ?? "—")</td>
+                        <td>@(row.Profile.Email ?? "—")</td>
+                        <td><code>@row.Profile.CustomerId</code></td>
+                        <td>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox"
+                                       checked="@row.IsAdmin"
+                                       disabled="@row.IsBusy"
+                                       @onchange="@(async e => await ToggleAdminAsync(row, (bool)e.Value!))" />
+                            </div>
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-danger"
+                                    disabled="@row.IsBusy"
+                                    @onclick="@(() => DeleteUserAsync(row))">
+                                Löschen
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private class UserRow
+    {
+        public CustomerProfileDto Profile { get; init; } = null!;
+        public bool IsAdmin { get; set; }
+        public string? AdminAssignmentId { get; set; }
+        public bool IsBusy { get; set; }
+    }
+
+    private List<UserRow> userRows = [];
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var profiles = await Api.GetAdminCustomersAsync();
+            var assignments = await Graph.GetAssignedUsersAsync();
+
+            var adminSet = assignments
+                .Where(a => a.RoleName == "Admin")
+                .ToDictionary(a => a.UserId, a => a.AssignmentId);
+
+            userRows = profiles.Select(p => new UserRow
+            {
+                Profile = p,
+                IsAdmin = adminSet.ContainsKey(p.OwnerId),
+                AdminAssignmentId = adminSet.TryGetValue(p.OwnerId, out var aid) ? aid : null
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task ToggleAdminAsync(UserRow row, bool newValue)
+    {
+        row.IsBusy = true;
+        errorMessage = null;
+        try
+        {
+            if (newValue && !row.IsAdmin)
+            {
+                await Graph.AssignRoleAsync(row.Profile.OwnerId, "Admin");
+                row.IsAdmin = true;
+                var assignments = await Graph.GetAssignedUsersAsync();
+                row.AdminAssignmentId = assignments
+                    .FirstOrDefault(a => a.UserId == row.Profile.OwnerId && a.RoleName == "Admin")
+                    ?.AssignmentId;
+            }
+            else if (!newValue && row.IsAdmin && row.AdminAssignmentId is not null)
+            {
+                await Graph.RemoveAssignmentAsync(row.AdminAssignmentId);
+                row.IsAdmin = false;
+                row.AdminAssignmentId = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            row.IsBusy = false;
+        }
+    }
+
+    private async Task DeleteUserAsync(UserRow row)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            $"Benutzer \"{row.Profile.DisplayName ?? row.Profile.Email}\" mit allen Geräten und Messdaten löschen?\nDiese Aktion kann nicht rückgängig gemacht werden.");
+        if (!ok) return;
+
+        row.IsBusy = true;
+        errorMessage = null;
+        try
+        {
+            await Graph.DeleteUserAsync(row.Profile.OwnerId);
+            await Api.AdminDeleteCustomerAsync(row.Profile.OwnerId);
+            userRows.Remove(row);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+            row.IsBusy = false;
+        }
+    }
+}

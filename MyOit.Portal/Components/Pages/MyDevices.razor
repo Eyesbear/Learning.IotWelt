@@ -1,0 +1,115 @@
+@page "/my-devices"
+@attribute [Authorize]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+@inject IotWeltApiClient Api
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@using Microsoft.Identity.Web
+@using IotWelt.Common
+
+<PageTitle>Meine Geräte</PageTitle>
+
+<h2 class="mb-4">Meine Geräte</h2>
+
+@if (errorMessage is not null)
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+
+<RadzenDataGrid @ref="grid"
+                Data="@devices"
+                TItem="DeviceDashboardDto"
+                EditMode="DataGridEditMode.Single"
+                RowUpdate="@OnRowUpdate"
+                AllowSorting="true"
+                class="mb-3">
+    <Columns>
+        <RadzenDataGridColumn TItem="DeviceDashboardDto" Property="Name" Title="Name" Width="180px">
+            <EditTemplate Context="d">
+                <RadzenTextBox @bind-Value="d.Name" MaxLength="100" Style="width:100%" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="DeviceDashboardDto" Property="Caption" Title="Beschreibung">
+            <EditTemplate Context="d">
+                <RadzenTextBox @bind-Value="d.Caption" MaxLength="200" Style="width:100%" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="DeviceDashboardDto" Property="Standort" Title="Standort" Width="140px">
+            <EditTemplate Context="d">
+                <RadzenTextBox @bind-Value="d.Standort" MaxLength="24" Style="width:100%" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="DeviceDashboardDto" Property="DeviceId" Title="Geräte-Nr." Width="110px" />
+        <RadzenDataGridColumn TItem="DeviceDashboardDto" Property="ZuletztGemeldet" Title="Zuletzt" Width="130px" FormatString="{0:dd.MM. HH:mm}" />
+        <RadzenDataGridColumn TItem="DeviceDashboardDto" Title="Aktionen" Width="130px" Sortable="false">
+            <Template Context="d">
+                <RadzenButton Icon="edit" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                              Click="@(() => grid!.EditRow(d))" class="me-1" />
+                <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small"
+                              Click="@(() => DeleteAsync(d))" />
+            </Template>
+            <EditTemplate Context="d">
+                <RadzenButton Icon="check" ButtonStyle="ButtonStyle.Success" Size="ButtonSize.Small"
+                              Click="@(() => grid!.UpdateRow(d))" class="me-1" />
+                <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                              Click="@(() => grid!.CancelEditRow(d))" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+    </Columns>
+</RadzenDataGrid>
+
+@code {
+    private RadzenDataGrid<DeviceDashboardDto>? grid;
+    private List<DeviceDashboardDto> devices = [];
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            devices = await Api.GetDevicesAsync();
+        }
+        catch (MicrosoftIdentityWebChallengeUserException)
+        {
+            Navigation.NavigateTo("MicrosoftIdentity/Account/SignIn", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+    }
+
+    private async Task OnRowUpdate(DeviceDashboardDto d)
+    {
+        try
+        {
+            await Api.UpdateDeviceAsync(d.Id, new DeviceUpdateDto(d.Name, d.Standort, d.Caption));
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+    }
+
+    private async Task DeleteAsync(DeviceDashboardDto d)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm", $"Gerät \"{d.Name}\" und alle Messdaten löschen?");
+        if (!ok) return;
+
+        try
+        {
+            await Api.DeleteDeviceAsync(d.Id);
+            devices.Remove(d);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+    }
+}

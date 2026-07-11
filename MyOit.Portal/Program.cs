@@ -20,6 +20,7 @@ builder.Services.AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
         new[] { builder.Configuration["IotWeltApi:Scopes"]! })
     .AddInMemoryTokenCaches();
 
+
 builder.Services.AddControllersWithViews()
     .AddMicrosoftIdentityUI();
 
@@ -27,6 +28,7 @@ builder.Services.AddAuthorization();
 
 builder.Services.AddRadzenComponents();
 
+builder.Services.AddScoped<GraphUserService>();
 builder.Services.AddHttpClient<IotWeltApiClient>(client =>
     client.BaseAddress = new Uri(builder.Configuration["IotWeltApi:BaseUrl"] ?? "http://iotwelt-api"));
 
