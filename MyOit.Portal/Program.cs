@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.Identity.Web;
 using Microsoft.Identity.Web.UI;
 using MyOit.Portal.Components;
+using MyOit.Portal.Models;
 using MyOit.Portal.Services;
 using Radzen;
 
@@ -27,6 +28,9 @@ builder.Services.AddControllersWithViews()
 builder.Services.AddAuthorization();
 
 builder.Services.AddRadzenComponents();
+
+builder.Services.Configure<DashboardOptions>(
+    builder.Configuration.GetSection(DashboardOptions.SectionName));
 
 builder.Services.AddScoped<GraphUserService>();
 builder.Services.AddHttpClient<IotWeltApiClient>(client =>

@@ -6,6 +6,19 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 
 ---
 
+## [0.4.1] — 2026-07-16
+
+### Added
+- `DashboardOptions` (Section `Dashboard` in `appsettings.json`): `OfflineAfterMinutes` steuert, ab wann eine Sensorkachel im Live-Dashboard als **Offline** gilt — Default **5 Minuten**
+
+### Changed
+- Live-Dashboard: Online-/Offline-Schwelle war fest auf 2 Minuten kodiert und kommt jetzt aus der Konfiguration (Bindung via `IOptions<DashboardOptions>`, Auslesen beim Start — Änderung erfordert Portal-Neustart)
+
+### Fixed
+- Versionsnummern in `IotWelt.API.csproj` und `MyOit.Portal.csproj` standen noch auf `0.3.0` — der Bump auf 0.4.0 war unterblieben; beide jetzt auf `0.4.1`
+
+---
+
 ## [0.4.0] — 2026-07-16
 
 ### Added

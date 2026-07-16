@@ -1,7 +1,10 @@
 @page "/dashboard"
 @inject NavigationManager Navigation
 @using Microsoft.Identity.Web
+@using Microsoft.Extensions.Options
+@using MyOit.Portal.Models
 @inject IotWeltApiClient Api
+@inject IOptions<DashboardOptions> DashboardOptions
 @implements IAsyncDisposable
 @attribute [Authorize]
 
@@ -107,8 +110,9 @@ else
         }
     }
 
-    private static bool IsOnline(DeviceDashboardDto d)
-        => d.ZuletztGemeldet.HasValue && (DateTime.UtcNow - d.ZuletztGemeldet.Value).TotalMinutes < 2;
+    private bool IsOnline(DeviceDashboardDto d)
+        => d.ZuletztGemeldet.HasValue
+           && (DateTime.UtcNow - d.ZuletztGemeldet.Value).TotalMinutes < DashboardOptions.Value.OfflineAfterMinutes;
 
     private static string FormatTemp(double? t)
         => t.HasValue ? $"{t.Value:F1} °C" : "—";
