@@ -35,11 +35,13 @@ public class IotWeltApiClient(
         return await http.GetFromJsonAsync<DeviceDashboardDto>($"/api/devices/{id}");
     }
 
-    public async Task<List<KlimaVerlaufPunkt>> GetKlimaVerlaufAsync(int deviceId, int minutes = 60)
+    public async Task<List<KlimaVerlaufPunkt>> GetKlimaVerlaufAsync(int deviceId, int minutes = 60, string? range = null)
     {
         await AuthorizeAsync();
-        return await http.GetFromJsonAsync<List<KlimaVerlaufPunkt>>(
-            $"/api/raumklimalog/{deviceId}?minutes={minutes}") ?? [];
+        var url = range is not null
+            ? $"/api/raumklimalog/{deviceId}?range={Uri.EscapeDataString(range)}"
+            : $"/api/raumklimalog/{deviceId}?minutes={minutes}";
+        return await http.GetFromJsonAsync<List<KlimaVerlaufPunkt>>(url) ?? [];
     }
 
     public async Task<string?> GetCustomerIdAsync()

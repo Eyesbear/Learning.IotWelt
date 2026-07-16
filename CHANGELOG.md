@@ -6,6 +6,30 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 
 ---
 
+## [0.4.0] — 2026-07-16
+
+### Added
+- **Hardware-ID als stabile Gerätekennung**: `Device.HardwareId` (max. 14 Zeichen); ESP32 sendet `hardwareId` im Sensor-Payload
+- `SensorController`: primäre Geräte-Identifikation per **HardwareId** (Auto-Create bei unbekannter ID); `CustomerId` + `DeviceName` sowie reiner `DeviceName` als Fallback-/Legacy-Modi
+- **Hardware-ID-Spalte** in `/my-devices` und `/admin/devices`
+- **Live-Dashboard → Verlauf**: zusätzliche Zeiträume **12 h / 24 h** sowie Kalendertag-Presets **Heute / Gestern / Letzte 7 Tage**
+- **Serverseitige Aggregation** der Verlaufsdaten: Mittelung in Zeit-Buckets abhängig von der Fensterdauer (≤ 4 h roh, ≤ 12 h → 5 min, ≤ 24 h → 15 min, ≤ 48 h → 30 min, > 48 h → 60 min) — hält Payload und Chart lesbar/performant
+
+### Changed
+- `SensorController`: bei bekannter HardwareId werden `Name` und `CustomerId` ggf. an die gemeldeten Werte angeglichen
+- `SensorDataDto.CustomerId` explizit als JSON-Feld `customer_id`
+- `DeviceDashboardDto` + `AdminDeviceDto`: um `HardwareId` erweitert; `DevicesController.GetDashboard` liefert HardwareId mit
+- `RaumKlimaLogController.GetVerlauf`: neuer `range`-Parameter (Kalendertage) + Bucket-Aggregation
+- `IotWeltApiClient.GetKlimaVerlaufAsync`: optionaler `range`-Parameter; Verlauf-Achse zeigt bei tagesübergreifenden Zeiträumen zusätzlich das Datum
+
+### Fixed
+- `/my-devices`: Spalte „Geräte-Nr." zeigte den DTO-Typnamen statt eines Werts — ersetzt durch „Hardware ID" (Feld fehlte im `DeviceDashboardDto`)
+
+### Migrations
+- `20260711133147_AddHardwareIdToDevice` — `Devices.HardwareId nvarchar(14) NULL`
+
+---
+
 ## [0.3.0] — 2026-07-11
 
 ### Added

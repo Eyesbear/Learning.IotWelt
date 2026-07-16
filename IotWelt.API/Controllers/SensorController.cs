@@ -16,15 +16,52 @@ public class SensorController(AppDbContext db) : ControllerBase
     {
         Device? device;
 
-        if (!string.IsNullOrEmpty(data.CustomerId))
+        if (!string.IsNullOrEmpty(data.HardwareId))
         {
-            // Neuer Modus: Device per CustomerId + DeviceName suchen
+            // Primärer Modus: Gerät per HardwareId identifizieren
+            device = await db.Devices.FirstOrDefaultAsync(d => d.HardwareId == data.HardwareId);
+
+            if (device is null)
+            {
+                device = new Device
+                {
+                    Name = data.DeviceName,
+                    HardwareId = data.HardwareId,
+                    CustomerId = data.CustomerId,
+                    ZuerstGesehen = DateTime.UtcNow
+                };
+                db.Devices.Add(device);
+                await db.SaveChangesAsync();
+            }
+            else
+            {
+                // Gerät bekannt (per HardwareId): Stammdaten ggf. an gemeldete Werte angleichen
+                var changed = false;
+
+                if (!string.IsNullOrEmpty(data.DeviceName) && device.Name != data.DeviceName)
+                {
+                    device.Name = data.DeviceName;
+                    changed = true;
+                }
+
+                if (!string.IsNullOrEmpty(data.CustomerId) && device.CustomerId != data.CustomerId)
+                {
+                    device.CustomerId = data.CustomerId;
+                    changed = true;
+                }
+
+                if (changed)
+                    await db.SaveChangesAsync();
+            }
+        }
+        else if (!string.IsNullOrEmpty(data.CustomerId))
+        {
+            // Fallback: CustomerId + DeviceName (Übergangs-Modus)
             device = await db.Devices.FirstOrDefaultAsync(
                 d => d.CustomerId == data.CustomerId && d.Name == data.DeviceName);
 
             if (device is null)
             {
-                // Auto-Create: neues Device für diesen Kunden anlegen
                 device = new Device
                 {
                     Name = data.DeviceName,
@@ -37,7 +74,7 @@ public class SensorController(AppDbContext db) : ControllerBase
         }
         else
         {
-            // Legacy-Modus (Übergang): Suche nur per DeviceName, kein CustomerId-Check
+            // Legacy-Modus: nur DeviceName, kein CustomerId/HardwareId
             device = await db.Devices.FirstOrDefaultAsync(d => d.Name == data.DeviceName);
             if (device is null)
             {

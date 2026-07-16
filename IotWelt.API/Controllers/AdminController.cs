@@ -45,7 +45,7 @@ public class AdminController(AppDbContext db) : ControllerBase
         {
             var owner = profiles.FirstOrDefault(p => p.CustomerId == d.CustomerId);
             return new AdminDeviceDto(
-                d.Id, d.Name, d.Caption, d.Standort, d.Typ, d.DeviceId,
+                d.Id, d.Name, d.Caption, d.Standort, d.Typ, d.DeviceId, d.HardwareId,
                 d.CustomerId, d.ZuerstGesehen,
                 owner?.DisplayName, owner?.Email);
         }).ToList();

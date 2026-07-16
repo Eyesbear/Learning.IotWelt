@@ -4,6 +4,7 @@ public class DeviceDashboardDto
 {
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
+    public string? HardwareId { get; set; }
     public string? Typ { get; set; }
     public string? Standort { get; set; }
     public DateTime? ZuerstGesehen { get; set; }

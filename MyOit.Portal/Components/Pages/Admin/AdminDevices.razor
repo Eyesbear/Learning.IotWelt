@@ -48,6 +48,11 @@
                 <RadzenTextBox @bind-Value="editName" MaxLength="100" Style="width:100%" />
             </EditTemplate>
         </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="AdminDeviceDto" Property="HardwareId" Title="Hardware-ID" Width="140px">
+            <Template Context="d">
+                <span style="font-family:monospace;font-size:0.85em">@(d.HardwareId ?? "—")</span>
+            </Template>
+        </RadzenDataGridColumn>
         <RadzenDataGridColumn TItem="AdminDeviceDto" Property="Caption" Title="Beschreibung">
             <EditTemplate Context="d">
                 <RadzenTextBox @bind-Value="editCaption" MaxLength="200" Style="width:100%" />

@@ -2,10 +2,16 @@
 
 <div class="mb-3 d-flex align-items-center gap-3">
     <label class="form-label mb-0">Zeitraum:</label>
-    <select class="form-select form-select-sm w-auto" @onchange="OnMinutesChanged">
-        <option value="60" selected="@(Minutes == 60)">Letzte Stunde</option>
-        <option value="120" selected="@(Minutes == 120)">Letzte 2 Stunden</option>
-        <option value="240" selected="@(Minutes == 240)">Letzte 4 Stunden</option>
+    <select class="form-select form-select-sm w-auto" @onchange="OnRangeChanged">
+        <option value="m:60" selected="@(SelectedKey == "m:60")">Letzte Stunde</option>
+        <option value="m:120" selected="@(SelectedKey == "m:120")">Letzte 2 Stunden</option>
+        <option value="m:240" selected="@(SelectedKey == "m:240")">Letzte 4 Stunden</option>
+        <option value="m:720" selected="@(SelectedKey == "m:720")">Letzte 12 Stunden</option>
+        <option value="m:1440" selected="@(SelectedKey == "m:1440")">Letzte 24 Stunden</option>
+        <option disabled>──────────</option>
+        <option value="r:today" selected="@(SelectedKey == "r:today")">Heute</option>
+        <option value="r:yesterday" selected="@(SelectedKey == "r:yesterday")">Gestern</option>
+        <option value="r:7days" selected="@(SelectedKey == "r:7days")">Letzte 7 Tage</option>
     </select>
 </div>
 
@@ -29,7 +35,7 @@ else
                           StrokeWidth="2">
             <RadzenSeriesDataLabels Visible="false" />
         </RadzenLineSeries>
-        <RadzenCategoryAxis FormatString="{0:HH:mm}" />
+        <RadzenCategoryAxis FormatString="@categoryFormat" />
         <RadzenValueAxis Min="10" Max="40">
             <RadzenAxisTitle Text="°C" />
         </RadzenValueAxis>
@@ -46,7 +52,7 @@ else
                           StrokeWidth="2">
             <RadzenSeriesDataLabels Visible="false" />
         </RadzenLineSeries>
-        <RadzenCategoryAxis FormatString="{0:HH:mm}" />
+        <RadzenCategoryAxis FormatString="@categoryFormat" />
         <RadzenValueAxis>
             <RadzenAxisTitle Text="%" />
         </RadzenValueAxis>
@@ -57,21 +63,31 @@ else
 @code {
     [Parameter] public int DeviceId { get; set; }
 
-    private int Minutes { get; set; } = 60;
+    // Auswahl kodiert als "m:<minuten>" (gleitendes Fenster) oder "r:<range>" (ganze Kalendertage)
+    private string SelectedKey { get; set; } = "m:60";
+    private string categoryFormat = "{0:HH:mm}";
     private List<VerlaufViewModel>? verlauf;
 
     protected override async Task OnParametersSetAsync()
         => await Laden();
 
-    private async Task OnMinutesChanged(ChangeEventArgs e)
+    private async Task OnRangeChanged(ChangeEventArgs e)
     {
-        Minutes = int.Parse(e.Value?.ToString() ?? "60");
+        SelectedKey = e.Value?.ToString() ?? "m:60";
         await Laden();
     }
 
     private async Task Laden()
     {
-        var raw = await Api.GetKlimaVerlaufAsync(DeviceId, Minutes);
+        var isRange = SelectedKey.StartsWith("r:");
+        var raw = isRange
+            ? await Api.GetKlimaVerlaufAsync(DeviceId, range: SelectedKey[2..])
+            : await Api.GetKlimaVerlaufAsync(DeviceId, minutes: int.Parse(SelectedKey[2..]));
+
+        // Bei tagesübergreifenden Zeiträumen Datum in der Achse mit anzeigen
+        var showDate = SelectedKey is "m:720" or "m:1440" or "r:yesterday" or "r:7days";
+        categoryFormat = showDate ? "{0:dd.MM. HH:mm}" : "{0:HH:mm}";
+
         verlauf = raw.Select(p => new VerlaufViewModel
         {
             LocalZeit = p.Zeitstempel.ToLocalTime(),

@@ -7,6 +7,7 @@ public record AdminDeviceDto(
     string? Standort,
     string? Typ,
     uint? DeviceId,
+    string? HardwareId,
     string? CustomerId,
     DateTime? ZuerstGesehen,
     string? OwnerDisplayName,

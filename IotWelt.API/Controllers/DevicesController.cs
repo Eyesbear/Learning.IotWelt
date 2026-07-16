@@ -52,6 +52,7 @@ public class DevicesController(AppDbContext db, CustomerService customers) : Con
             {
                 Id = d.Id,
                 Name = d.Name,
+                HardwareId = d.HardwareId,
                 Typ = d.Typ,
                 Standort = d.Standort,
                 Caption = d.Caption,

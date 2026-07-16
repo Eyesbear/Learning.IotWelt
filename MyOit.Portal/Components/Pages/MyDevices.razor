@@ -40,7 +40,7 @@
                 <RadzenTextBox @bind-Value="d.Standort" MaxLength="24" Style="width:100%" />
             </EditTemplate>
         </RadzenDataGridColumn>
-        <RadzenDataGridColumn TItem="DeviceDashboardDto" Property="DeviceId" Title="Geräte-Nr." Width="110px" />
+        <RadzenDataGridColumn TItem="DeviceDashboardDto" Property="HardwareId" Title="Hardware ID" Width="130px" />
         <RadzenDataGridColumn TItem="DeviceDashboardDto" Property="ZuletztGemeldet" Title="Zuletzt" Width="130px" FormatString="{0:dd.MM. HH:mm}" />
         <RadzenDataGridColumn TItem="DeviceDashboardDto" Title="Aktionen" Width="130px" Sortable="false">
             <Template Context="d">

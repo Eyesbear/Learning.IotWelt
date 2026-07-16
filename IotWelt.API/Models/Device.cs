@@ -15,6 +15,9 @@ public class Device
 
     public uint? DeviceId { get; set; }
 
+    [MaxLength(14)]
+    public string? HardwareId { get; set; }
+
     [MaxLength(24)]
     [Column(TypeName = "nvarchar(24)")]
     public string? Standort { get; set; }
