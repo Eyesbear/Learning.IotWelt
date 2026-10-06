@@ -6,6 +6,21 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 
 ---
 
+## [Unreleased] — v2.0 im Umbau
+
+### Added
+- **`IotWelt.API.Tests`**: 18 Integrationstests (xUnit, `WebApplicationFactory`, SQL Server per Testcontainers) als Sicherheitsnetz vor dem Auth-Umbau — Sensor-Empfang (alle drei Zuordnungsmodi), Mandantentrennung bei `/api/devices`, Dashboard, Verlauf inkl. Bucket-Aggregation, Kundenprofil, Admin-Endpoints
+- `docs/user-stories/benutzerverwaltung.md`: User Stories für Konto/Login/Mitgliedschaft (Owner/Editor/Reader, Einladungen, Kontowechsel)
+
+### Changed
+- `CLAUDE.md` für die v2.0-Zielarchitektur neu geschrieben (kein Azure, API als Token-Aussteller, Definition of Done, Konventionen)
+- `.claude/settings.local.json` nicht mehr versioniert
+
+### Security
+- Bekannt, durch Test dokumentiert: `POST /api/sensor` ist anonym — wer eine `hardwareId` kennt, kann das Gerät per `customer_id` einem anderen Kunden zuordnen. Wird in Phase 1 behoben.
+
+---
+
 ## [0.4.1] — 2026-07-16
 
 ### Added
