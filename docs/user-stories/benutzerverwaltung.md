@@ -1,6 +1,6 @@
 # User Stories — Benutzerverwaltung (v2.0)
 
-Status: **Entwurf** · Grundlage für Phase 1 · Stand 2026-10-06
+Status: **abgestimmt** · Grundlage für Phase 1 · Stand 2026-10-06
 
 ## Begriffe
 | Begriff | Bedeutung |
@@ -17,6 +17,8 @@ Status: **Entwurf** · Grundlage für Phase 1 · Stand 2026-10-06
 - Ein Login kann **mehreren Konten** angehören; Portal und App bieten einen **Kontowechsel**.
 - Rollen: **Owner / Editor / Reader**.
 - Ein Zugriff gilt für das **ganze Konto**, bis er entzogen wird (keine Befristung, keine Geräte-Auswahl — spätere Erweiterung möglich).
+- Eingeladene Personen bekommen **kein** automatisches eigenes Konto (nur auf Wunsch, B2).
+- Jedes Konto hat **genau einen Owner**; Ownership ist übertragbar (C5).
 
 ## Rechte-Matrix
 | Aktion | Reader | Editor | Owner | System-Admin |
@@ -63,7 +65,7 @@ Als Owner möchte ich eine Person per E-Mail mit einer Rolle (Editor/Reader) ein
 **B2 Einladung annehmen — neue Person**
 Als eingeladene Person ohne Login möchte ich über den Link einen Login anlegen und bin danach Mitglied des Kontos.
 - Die E-Mail-Adresse ist durch die Einladung vorgegeben und gilt damit als bestätigt.
-- *Offen:* Bekommt die Person zusätzlich ein eigenes leeres Konto? **Vorschlag: nein** — erst auf Wunsch („Eigenes Konto anlegen“).
+- Die Person bekommt **kein** eigenes leeres Konto — erst auf Wunsch („Eigenes Konto anlegen“).
 
 **B3 Einladung annehmen — vorhandener Login**
 Als Person mit bestehendem Login möchte ich die Einladung nach Anmeldung annehmen; das neue Konto erscheint in meinem Kontowechsler.
@@ -74,7 +76,7 @@ Als Person mit bestehendem Login möchte ich die Einladung nach Anmeldung annehm
 **C2 Rolle ändern** — Editor ↔ Reader; wirkt spätestens beim nächsten Token-Refresh.
 **C3 Zugriff entziehen** — Mitgliedschaft wird entfernt; betroffene Person sieht das Konto spätestens nach dem nächsten Token-Refresh nicht mehr.
 **C4 Konto löschen** — löscht Geräte, Messwerte, Mitgliedschaften und offene Einladungen (mit Bestätigungsdialog).
-**C5 Ownership übertragen** — *Vorschlag:* Ein Konto hat genau einen Owner; Übertragung an ein bestehendes Mitglied, bisheriger Owner wird Editor.
+**C5 Ownership übertragen** — Ein Konto hat genau einen Owner; Übertragung an ein bestehendes Mitglied, bisheriger Owner wird Editor.
 
 ## Epic D — Kontowechsel
 
@@ -103,7 +105,6 @@ Als Person mit bestehendem Login möchte ich die Einladung nach Anmeldung annehm
 - `CustomerService` liefert künftig *aktives Konto + Rolle* aus dem Token und prüft die Mitgliedschaft.
 - Autorisierung über Policies (`CanRead`, `CanEdit`, `IsOwner`) statt Rollen-Strings in Controllern.
 
-## Offene Fragen
-1. B2: Eigenes Konto für eingeladene Personen automatisch anlegen? (Vorschlag: nein)
-2. C5: Genau ein Owner oder mehrere Owner pro Konto? (Vorschlag: genau einer)
-3. Soll ein Reader Alarme (Wasseralarm) per E-Mail/Push bekommen können? (später, Phase 5/6)
+## Später (nicht Teil von Phase 1)
+- Alarme (Wasseralarm) für Mitglieder per E-Mail/Push — Phase 5/6.
+- Befristete Zugriffe, Zugriff auf einzelne Geräte.
