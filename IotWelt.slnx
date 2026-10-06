@@ -1,4 +1,5 @@
 <Solution>
+  <Project Path="IotWelt.API.Tests/IotWelt.API.Tests.csproj" />
   <Project Path="IotWelt.API/IotWelt.API.csproj" />
   <Project Path="IotWelt.AppHost/IotWelt.AppHost.csproj" />
   <Project Path="IotWelt.Common/IotWelt.Common.csproj" Id="0c183bd5-a6fb-4b98-92d2-4672f2b2e7bf" />

@@ -31,13 +31,14 @@ Git- und VS-Schritte meist selbst aus — erst erklären, dann auf Rückmeldung 
 | `IotWelt.API` | ASP.NET Core Web API | REST-API, EF Core, (künftig) Identity + Token-Ausgabe |
 | `MyOit.Portal` | Blazor Server (Radzen) | Web-Frontend, ruft nur die API auf |
 | `IotWelt.Common` | Class Library | DTOs, die API und Clients teilen |
+| `IotWelt.API.Tests` | xUnit | Integrationstests: `WebApplicationFactory` + SQL Server per Testcontainers, Test-Login per Header `X-Test-User` / `X-Test-Roles` |
 
-Geplant: `IotWelt.API.Tests` (xUnit + WebApplicationFactory), `IotWelt.Maui` (Android/Windows).
+Geplant: `IotWelt.Maui` (Android/Windows).
 
 ## Bauen, Testen, Starten
 ```powershell
 dotnet build IotWelt.slnx
-dotnet test IotWelt.slnx          # sobald das Testprojekt existiert
+dotnet test IotWelt.slnx          # braucht laufendes Docker (Testcontainers startet SQL Server)
 dotnet run --project IotWelt.AppHost
 ```
 - Startprojekt in VS: `IotWelt.AppHost`; Aspire-Dashboard öffnet sich automatisch.
@@ -69,8 +70,9 @@ betroffene Seite/Endpoint einmal real ausprobiert, `CHANGELOG.md` ergänzt.
 ## ESP32-Integration
 - Firmware: `D:\WORK\VS_Development\ComplexProjects\ESP32Configuration_Complex\ESP32_KlimaSensor`
 - Payload an `POST /api/sensor`:
-  `{ "hardwareId": "...", "customerId": "...", "deviceName": "...", "temperatur": 21.5, "relativeFeuchte": 45.0, "wasserAlarm": false }`
-- Gerät wird primär über `hardwareId` erkannt (Auto-Create), `customerId`/`deviceName` sind Fallback.
+  `{ "hardwareId": "...", "customer_id": "...", "deviceName": "...", "temperatur": 21.5, "relativeFeuchte": 45.0, "wasserAlarm": false }`
+  **Achtung:** `customer_id` mit Unterstrich (`[JsonPropertyName]` in `SensorDataDto`), alle anderen Felder camelCase.
+- Gerät wird primär über `hardwareId` erkannt (Auto-Create), `customer_id`/`deviceName` sind Fallback.
 - Der Sensor-Endpoint muss abwärtskompatibel bleiben, solange die Firmware nicht umgestellt ist.
 
 ## Konventionen
