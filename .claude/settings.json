@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/build-check.sh\"",
+            "timeout": 180,
+            "statusMessage": "Build-Check (dotnet build)…"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -45,6 +45,10 @@ dotnet run --project IotWelt.AppHost
 - API lokal fest auf `http://localhost:5013` (wegen ESP32 im LAN auch `0.0.0.0:5013`).
 - Scalar-UI (nur Development): `/scalar/v1`. Manuelle Requests: `IotWelt.API/IotWelt.API.http`.
 
+**Build-Hook:** `.claude/settings.json` → `.claude/hooks/build-check.sh` baut die Solution, bevor Claude eine
+Antwort beendet (nur wenn sich `.cs/.razor/.csproj/.slnx/.props` geändert haben). Build-Fehler zwingen Claude
+zur Korrektur; gesperrte DLLs (App läuft in VS) werden nur als Hinweis gemeldet.
+
 **Definition of Done für Code-Änderungen:** `dotnet build` ohne neue Warnungen, `dotnet test` grün,
 betroffene Seite/Endpoint einmal real ausprobiert, `CHANGELOG.md` ergänzt.
 
