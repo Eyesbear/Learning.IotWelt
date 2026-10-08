@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace IotWelt.API.Controllers;
 
-[Authorize]
+[Authorize(Policy = Policies.CanRead)]
 [ApiController]
 [Route("api/[controller]")]
 public class DevicesController(AppDbContext db, CurrentAccount current) : ControllerBase
@@ -78,6 +78,7 @@ public class DevicesController(AppDbContext db, CurrentAccount current) : Contro
     }
 
     [HttpPost]
+    [Authorize(Policy = Policies.CanEdit)]
     public async Task<ActionResult<Device>> Create(Device device)
     {
         device.CustomerId = CustomerId;
@@ -87,6 +88,7 @@ public class DevicesController(AppDbContext db, CurrentAccount current) : Contro
     }
 
     [HttpPut("{id}")]
+    [Authorize(Policy = Policies.CanEdit)]
     public async Task<IActionResult> Update(int id, DeviceUpdateDto dto)
     {
         var customerId = CustomerId;
@@ -104,6 +106,7 @@ public class DevicesController(AppDbContext db, CurrentAccount current) : Contro
     }
 
     [HttpDelete("{id}")]
+    [Authorize(Policy = Policies.IsOwner)]
     public async Task<IActionResult> Delete(int id)
     {
         var customerId = CustomerId;

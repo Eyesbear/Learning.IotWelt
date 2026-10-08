@@ -1,5 +1,6 @@
 using IotWelt.API.Data;
 using IotWelt.API.Models;
+using IotWelt.API.Services;
 using IotWelt.Common;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -7,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace IotWelt.API.Controllers;
 
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = Policies.AdminRole)]
 [ApiController]
 [Route("api/admin")]
 public class AdminController(AppDbContext db) : ControllerBase

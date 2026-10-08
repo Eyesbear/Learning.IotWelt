@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace IotWelt.API.Controllers;
 
-[Authorize]
+[Authorize(Policy = Policies.CanRead)]
 [ApiController]
 [Route("api/[controller]")]
 public class RaumKlimaLogController(AppDbContext db, CurrentAccount current) : ControllerBase

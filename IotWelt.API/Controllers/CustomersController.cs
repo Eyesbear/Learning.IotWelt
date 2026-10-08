@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace IotWelt.API.Controllers;
 
-[Authorize]
+[Authorize(Policy = Policies.CanRead)]
 [ApiController]
 [Route("api/customers")]
 public class CustomersController(CurrentAccount current) : ControllerBase
