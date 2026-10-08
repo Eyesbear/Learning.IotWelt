@@ -38,9 +38,7 @@ public class AdminController(AppDbContext db) : ControllerBase
             .Distinct()
             .ToList();
 
-        var owners = await Owners
-            .Where(o => customerIds.Contains(o.CustomerId))
-            .ToListAsync();
+        var owners = await Owners(customerIds).ToListAsync();
 
         var items = devices.Select(d =>
         {
@@ -86,8 +84,7 @@ public class AdminController(AppDbContext db) : ControllerBase
     [HttpGet("customers")]
     public async Task<ActionResult<List<CustomerProfileDto>>> GetCustomers()
     {
-        var owners = await Owners
-            .OrderBy(o => o.DisplayName ?? o.Email ?? o.UserId)
+        var owners = await Owners()
             .Select(o => new CustomerProfileDto(o.UserId, o.CustomerId, o.DisplayName, o.Email))
             .ToListAsync();
 
@@ -117,10 +114,19 @@ public class AdminController(AppDbContext db) : ControllerBase
         return NoContent();
     }
 
-    // Owner je Konto (genau einer pro Konto) — ersetzt die frühere Tabelle CustomerProfiles
-    private IQueryable<OwnerInfo> Owners => db.AccountMemberships
-        .Where(m => m.Role == AccountRole.Owner)
-        .Select(m => new OwnerInfo(m.Account.CustomerId, m.UserId, m.User.DisplayName, m.User.Email));
+    // Owner je Konto (genau einer pro Konto) — ersetzt die frühere Tabelle CustomerProfiles.
+    // Filtern und Sortieren VOR dem Select: auf Eigenschaften eines per Konstruktor erzeugten
+    // Records kann EF Core nicht mehr in SQL übersetzen.
+    private IQueryable<OwnerInfo> Owners(List<string>? customerIds = null)
+    {
+        var owners = db.AccountMemberships.Where(m => m.Role == AccountRole.Owner);
+        if (customerIds is not null)
+            owners = owners.Where(m => customerIds.Contains(m.Account.CustomerId));
+
+        return owners
+            .OrderBy(m => m.User.DisplayName ?? m.User.Email ?? m.UserId)
+            .Select(m => new OwnerInfo(m.Account.CustomerId, m.UserId, m.User.DisplayName, m.User.Email));
+    }
 
     private record OwnerInfo(string CustomerId, string UserId, string? DisplayName, string? Email);
 }

@@ -5,30 +5,29 @@ using IotWelt.Common;
 
 namespace IotWelt.API.Tests;
 
-// Kundenprofil (Auto-Anlage beim ersten Aufruf) und Admin-Endpoints (Rolle "Admin").
+// Kundenkennung des aktiven Kontos und Admin-Endpoints (System-Rolle "Admin").
 [Collection(ApiCollection.Name)]
 public class CustomersAndAdminTests(ApiFactory factory)
 {
-    private record MeResponse(string CustomerId);
+    private record CustomerMe(string CustomerId);
 
     [Fact]
-    public async Task Erster_Aufruf_legt_Kundenprofil_mit_stabiler_16_stelliger_CustomerId_an()
+    public async Task Registrierung_legt_Konto_mit_16_stelliger_CustomerId_an()
     {
-        var client = factory.AsUser(TestData.UserId());
+        var user = await factory.CreateUserAsync();
 
-        var erster = await client.GetFromJsonAsync<MeResponse>("/api/customers/me");
-        var zweiter = await client.GetFromJsonAsync<MeResponse>("/api/customers/me");
+        var me = await user.Client.GetFromJsonAsync<CustomerMe>("/api/customers/me");
 
-        Assert.Matches("^[A-Z0-9]{16}$", erster!.CustomerId);
-        Assert.Equal(erster.CustomerId, zweiter!.CustomerId);
+        Assert.Matches("^[A-Z0-9]{16}$", me!.CustomerId);
+        Assert.Equal(user.CustomerId, me.CustomerId);
     }
 
     [Fact]
     public async Task Admin_Endpoints_ohne_Admin_Rolle_geben_403()
     {
-        var client = factory.AsUser(TestData.UserId());
+        var user = await factory.CreateUserAsync();
 
-        var response = await client.GetAsync("/api/admin/devices");
+        var response = await user.Client.GetAsync("/api/admin/devices");
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -36,35 +35,31 @@ public class CustomersAndAdminTests(ApiFactory factory)
     [Fact]
     public async Task Admin_sieht_Geraete_fremder_Kunden_mit_Besitzerdaten()
     {
-        var userId = TestData.UserId();
-        var kunde = factory.AsUser(userId);
-        var customerId = (await kunde.GetFromJsonAsync<MeResponse>("/api/customers/me"))!.CustomerId;
-        await kunde.PostAsJsonAsync("/api/devices", new { name = "Kundengeraet" });
+        var kunde = await factory.CreateUserAsync();
+        await kunde.Client.PostAsJsonAsync("/api/devices", new { name = "Kundengeraet" });
 
-        var admin = factory.AsUser(TestData.UserId(), "Admin");
-        var page = await admin.GetFromJsonAsync<PagedResult<AdminDeviceDto>>(
-            $"/api/admin/devices?customerId={customerId}");
+        var admin = await factory.CreateUserAsync(admin: true);
+        var page = await admin.Client.GetFromJsonAsync<PagedResult<AdminDeviceDto>>(
+            $"/api/admin/devices?customerId={kunde.CustomerId}");
 
         Assert.Equal(1, page!.TotalCount);
         var device = Assert.Single(page.Items);
         Assert.Equal("Kundengeraet", device.Name);
-        Assert.Equal($"{userId}@test.local", device.OwnerEmail);
+        Assert.Equal(kunde.Email, device.OwnerEmail);
     }
 
     [Fact]
     public async Task Admin_loescht_Kunden_samt_Geraeten()
     {
-        var userId = TestData.UserId();
-        var kunde = factory.AsUser(userId);
-        var customerId = (await kunde.GetFromJsonAsync<MeResponse>("/api/customers/me"))!.CustomerId;
-        await kunde.PostAsJsonAsync("/api/devices", new { name = "Weg" });
-        var admin = factory.AsUser(TestData.UserId(), "Admin");
+        var kunde = await factory.CreateUserAsync();
+        await kunde.Client.PostAsJsonAsync("/api/devices", new { name = "Weg" });
+        var admin = await factory.CreateUserAsync(admin: true);
 
-        var delete = await admin.DeleteAsync($"/api/admin/customers/{userId}");
+        var delete = await admin.Client.DeleteAsync($"/api/admin/customers/{kunde.UserId}");
 
         Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
-        var page = await admin.GetFromJsonAsync<PagedResult<AdminDeviceDto>>(
-            $"/api/admin/devices?customerId={customerId}");
+        var page = await admin.Client.GetFromJsonAsync<PagedResult<AdminDeviceDto>>(
+            $"/api/admin/devices?customerId={kunde.CustomerId}");
         Assert.Equal(0, page!.TotalCount);
     }
 }

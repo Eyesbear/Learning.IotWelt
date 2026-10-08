@@ -34,8 +34,8 @@ public class RaumKlimaLogControllerTests(ApiFactory factory)
     [Fact]
     public async Task Verlauf_eines_fremden_Geraets_gibt_404()
     {
-        var alice = factory.AsUser(TestData.UserId());
-        var bob = factory.AsUser(TestData.UserId());
+        var alice = (await factory.CreateUserAsync()).Client;
+        var bob = (await factory.CreateUserAsync()).Client;
         var deviceId = await SeedDeviceAsync(alice, (DateTime.UtcNow.AddMinutes(-5), 20));
 
         var response = await bob.GetAsync($"/api/raumklimalog/{deviceId}");
@@ -46,7 +46,7 @@ public class RaumKlimaLogControllerTests(ApiFactory factory)
     [Fact]
     public async Task Kurzes_Fenster_liefert_Rohwerte_nur_innerhalb_des_Fensters()
     {
-        var client = factory.AsUser(TestData.UserId());
+        var client = (await factory.CreateUserAsync()).Client;
         var now = DateTime.UtcNow;
         var deviceId = await SeedDeviceAsync(client,
             (now.AddMinutes(-90), 10),   // außerhalb von 60 min
@@ -61,7 +61,7 @@ public class RaumKlimaLogControllerTests(ApiFactory factory)
     [Fact]
     public async Task Fenster_von_12_Stunden_mittelt_auf_5_Minuten_Buckets()
     {
-        var client = factory.AsUser(TestData.UserId());
+        var client = (await factory.CreateUserAsync()).Client;
         var bucket = TimeSpan.FromMinutes(5);
         var start = FloorTo(DateTime.UtcNow.AddHours(-2), bucket);
         var deviceId = await SeedDeviceAsync(client,
