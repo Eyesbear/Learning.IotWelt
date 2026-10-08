@@ -7,12 +7,13 @@ namespace IotWelt.API.Controllers;
 [Authorize]
 [ApiController]
 [Route("api/customers")]
-public class CustomersController(CustomerService customers) : ControllerBase
+public class CustomersController(CurrentAccount current) : ControllerBase
 {
+    // Kennung des aktiven Kontos — wird im ESP32 als customer_id konfiguriert
     [HttpGet("me")]
-    public async Task<ActionResult<object>> GetMe()
+    public ActionResult<object> GetMe()
     {
-        var customerId = await customers.EnsureCustomerIdAsync(User);
+        var customerId = current.CustomerId;
         if (customerId is null) return Unauthorized();
         return Ok(new { customerId });
     }

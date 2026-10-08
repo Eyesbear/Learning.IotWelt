@@ -37,13 +37,13 @@ public class AdminController(AppDbContext db) : ControllerBase
             .Distinct()
             .ToList();
 
-        var profiles = await db.CustomerProfiles
-            .Where(p => customerIds.Contains(p.CustomerId))
+        var owners = await Owners
+            .Where(o => customerIds.Contains(o.CustomerId))
             .ToListAsync();
 
         var items = devices.Select(d =>
         {
-            var owner = profiles.FirstOrDefault(p => p.CustomerId == d.CustomerId);
+            var owner = owners.FirstOrDefault(o => o.CustomerId == d.CustomerId);
             return new AdminDeviceDto(
                 d.Id, d.Name, d.Caption, d.Standort, d.Typ, d.DeviceId, d.HardwareId,
                 d.CustomerId, d.ZuerstGesehen,
@@ -81,33 +81,45 @@ public class AdminController(AppDbContext db) : ControllerBase
         return NoContent();
     }
 
+    // Übergangsweise im alten Format (CustomerProfileDto) — wird in PR 1c durch Konten/Logins ersetzt
     [HttpGet("customers")]
     public async Task<ActionResult<List<CustomerProfileDto>>> GetCustomers()
     {
-        var profiles = await db.CustomerProfiles
-            .OrderBy(p => p.DisplayName ?? p.Email ?? p.OwnerId)
-            .Select(p => new CustomerProfileDto(p.OwnerId, p.CustomerId, p.DisplayName, p.Email))
+        var owners = await Owners
+            .OrderBy(o => o.DisplayName ?? o.Email ?? o.UserId)
+            .Select(o => new CustomerProfileDto(o.UserId, o.CustomerId, o.DisplayName, o.Email))
             .ToListAsync();
 
-        return Ok(profiles);
+        return Ok(owners);
     }
 
+    // Löscht alle Konten, deren Owner dieser Login ist, samt Geräten (Messwerte per Cascade).
+    // Der Login selbst bleibt bestehen — Login-Verwaltung folgt in PR 1c.
     [HttpDelete("customers/{ownerId}")]
     public async Task<IActionResult> DeleteCustomer(string ownerId)
     {
-        var profile = await db.CustomerProfiles
-            .FirstOrDefaultAsync(p => p.OwnerId == ownerId);
-        if (profile is null)
+        var accounts = await db.Accounts
+            .Where(a => a.Memberships.Any(m => m.UserId == ownerId && m.Role == AccountRole.Owner))
+            .ToListAsync();
+        if (accounts.Count == 0)
             return NotFound();
 
+        var customerIds = accounts.Select(a => a.CustomerId).ToList();
         var devices = await db.Devices
-            .Where(d => d.CustomerId == profile.CustomerId)
+            .Where(d => d.CustomerId != null && customerIds.Contains(d.CustomerId))
             .ToListAsync();
 
         db.Devices.RemoveRange(devices);
-        db.CustomerProfiles.Remove(profile);
+        db.Accounts.RemoveRange(accounts);
         await db.SaveChangesAsync();
 
         return NoContent();
     }
+
+    // Owner je Konto (genau einer pro Konto) — ersetzt die frühere Tabelle CustomerProfiles
+    private IQueryable<OwnerInfo> Owners => db.AccountMemberships
+        .Where(m => m.Role == AccountRole.Owner)
+        .Select(m => new OwnerInfo(m.Account.CustomerId, m.UserId, m.User.DisplayName, m.User.Email));
+
+    private record OwnerInfo(string CustomerId, string UserId, string? DisplayName, string? Email);
 }

@@ -34,7 +34,8 @@ builder.Services
     });
 
 builder.Services.AddAuthorization();
-builder.Services.AddScoped<CustomerService>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<CurrentAccount>();
 
 var app = builder.Build();
 

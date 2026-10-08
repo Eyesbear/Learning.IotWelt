@@ -11,14 +11,14 @@ namespace IotWelt.API.Controllers;
 [Authorize]
 [ApiController]
 [Route("api/[controller]")]
-public class DevicesController(AppDbContext db, CustomerService customers) : ControllerBase
+public class DevicesController(AppDbContext db, CurrentAccount current) : ControllerBase
 {
-    private Task<string?> GetCustomerIdAsync() => customers.EnsureCustomerIdAsync(User);
+    private string? CustomerId => current.CustomerId;
 
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Device>>> GetAll()
     {
-        var customerId = await GetCustomerIdAsync();
+        var customerId = CustomerId;
         return await db.Devices
             .Where(d => d.CustomerId == customerId)
             .ToListAsync();
@@ -27,7 +27,7 @@ public class DevicesController(AppDbContext db, CustomerService customers) : Con
     [HttpGet("dashboard")]
     public async Task<ActionResult<IEnumerable<DeviceDashboardDto>>> GetDashboard()
     {
-        var customerId = await GetCustomerIdAsync();
+        var customerId = CustomerId;
 
         var devices = await db.Devices
             .Where(d => d.CustomerId == customerId)
@@ -71,7 +71,7 @@ public class DevicesController(AppDbContext db, CustomerService customers) : Con
     [HttpGet("{id}")]
     public async Task<ActionResult<Device>> GetById(int id)
     {
-        var customerId = await GetCustomerIdAsync();
+        var customerId = CustomerId;
         var device = await db.Devices.FirstOrDefaultAsync(
             d => d.Id == id && d.CustomerId == customerId);
         return device is null ? NotFound() : Ok(device);
@@ -80,7 +80,7 @@ public class DevicesController(AppDbContext db, CustomerService customers) : Con
     [HttpPost]
     public async Task<ActionResult<Device>> Create(Device device)
     {
-        device.CustomerId = await GetCustomerIdAsync();
+        device.CustomerId = CustomerId;
         db.Devices.Add(device);
         await db.SaveChangesAsync();
         return CreatedAtAction(nameof(GetById), new { id = device.Id }, device);
@@ -89,7 +89,7 @@ public class DevicesController(AppDbContext db, CustomerService customers) : Con
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(int id, DeviceUpdateDto dto)
     {
-        var customerId = await GetCustomerIdAsync();
+        var customerId = CustomerId;
         var device = await db.Devices.FirstOrDefaultAsync(
             d => d.Id == id && d.CustomerId == customerId);
         if (device is null)
@@ -106,7 +106,7 @@ public class DevicesController(AppDbContext db, CustomerService customers) : Con
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var customerId = await GetCustomerIdAsync();
+        var customerId = CustomerId;
         var device = await db.Devices.FirstOrDefaultAsync(
             d => d.Id == id && d.CustomerId == customerId);
         if (device is null)
