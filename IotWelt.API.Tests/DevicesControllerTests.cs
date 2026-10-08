@@ -10,12 +10,6 @@ namespace IotWelt.API.Tests;
 [Collection(ApiCollection.Name)]
 public class DevicesControllerTests(ApiFactory factory)
 {
-    private static async Task<string> GetCustomerIdAsync(HttpClient client)
-    {
-        var me = await client.GetFromJsonAsync<MeResponse>("/api/customers/me");
-        return me!.CustomerId;
-    }
-
     private static async Task<Device> CreateDeviceAsync(HttpClient client, string name)
     {
         var response = await client.PostAsJsonAsync("/api/devices", new { name });
@@ -33,22 +27,21 @@ public class DevicesControllerTests(ApiFactory factory)
     [Fact]
     public async Task Neues_Geraet_gehoert_immer_dem_Aufrufer_auch_wenn_Body_anderen_Kunden_nennt()
     {
-        var client = factory.AsUser(TestData.UserId());
-        var eigeneId = await GetCustomerIdAsync(client);
+        var user = await factory.CreateUserAsync();
 
-        var response = await client.PostAsJsonAsync("/api/devices",
+        var response = await user.Client.PostAsJsonAsync("/api/devices",
             new { name = "Wohnzimmer", customerId = TestData.CustomerId() });
         var device = await response.Content.ReadFromJsonAsync<Device>();
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        Assert.Equal(eigeneId, device!.CustomerId);
+        Assert.Equal(user.CustomerId, device!.CustomerId);
     }
 
     [Fact]
     public async Task Kunde_sieht_nur_eigene_Geraete()
     {
-        var alice = factory.AsUser(TestData.UserId());
-        var bob = factory.AsUser(TestData.UserId());
+        var alice = (await factory.CreateUserAsync()).Client;
+        var bob = (await factory.CreateUserAsync()).Client;
         var aliceDevice = await CreateDeviceAsync(alice, "Alice-Bad");
         var bobDevice = await CreateDeviceAsync(bob, "Bob-Kueche");
 
@@ -62,8 +55,8 @@ public class DevicesControllerTests(ApiFactory factory)
     [Fact]
     public async Task Fremdes_Geraet_lesen_aendern_loeschen_gibt_404()
     {
-        var alice = factory.AsUser(TestData.UserId());
-        var bob = factory.AsUser(TestData.UserId());
+        var alice = (await factory.CreateUserAsync()).Client;
+        var bob = (await factory.CreateUserAsync()).Client;
         var aliceDevice = await CreateDeviceAsync(alice, "Alice-Flur");
 
         var get = await bob.GetAsync($"/api/devices/{aliceDevice.Id}");
@@ -81,7 +74,7 @@ public class DevicesControllerTests(ApiFactory factory)
     [Fact]
     public async Task Eigenes_Geraet_aendern_und_loeschen()
     {
-        var client = factory.AsUser(TestData.UserId());
+        var client = (await factory.CreateUserAsync()).Client;
         var device = await CreateDeviceAsync(client, "Alt");
 
         var put = await client.PutAsJsonAsync($"/api/devices/{device.Id}",
@@ -101,15 +94,14 @@ public class DevicesControllerTests(ApiFactory factory)
     [Fact]
     public async Task Dashboard_zeigt_letzten_Messwert_pro_Geraet()
     {
-        var client = factory.AsUser(TestData.UserId());
-        var customerId = await GetCustomerIdAsync(client);
+        var user = await factory.CreateUserAsync();
         var hw = TestData.HardwareId();
         var sensor = factory.CreateClient();
 
-        await sensor.PostAsJsonAsync("/api/sensor", new { hardwareId = hw, customer_id = customerId, deviceName = "Bad", temperatur = 20.0, relativeFeuchte = 50.0 });
-        await sensor.PostAsJsonAsync("/api/sensor", new { hardwareId = hw, customer_id = customerId, deviceName = "Bad", temperatur = 23.5, relativeFeuchte = 55.0, wasserAlarm = true });
+        await sensor.PostAsJsonAsync("/api/sensor", new { hardwareId = hw, customer_id = user.CustomerId, deviceName = "Bad", temperatur = 20.0, relativeFeuchte = 50.0 });
+        await sensor.PostAsJsonAsync("/api/sensor", new { hardwareId = hw, customer_id = user.CustomerId, deviceName = "Bad", temperatur = 23.5, relativeFeuchte = 55.0, wasserAlarm = true });
 
-        var dashboard = await client.GetFromJsonAsync<List<DeviceDashboardDto>>("/api/devices/dashboard");
+        var dashboard = await user.Client.GetFromJsonAsync<List<DeviceDashboardDto>>("/api/devices/dashboard");
 
         var kachel = Assert.Single(dashboard!);
         Assert.Equal(hw, kachel.HardwareId);
@@ -119,5 +111,65 @@ public class DevicesControllerTests(ApiFactory factory)
         Assert.NotNull(kachel.ZuletztGemeldet);
     }
 
-    private record MeResponse(string CustomerId);
+    // --- Rechte-Matrix (docs/user-stories/benutzerverwaltung.md) ---
+
+    [Fact]
+    public async Task Reader_sieht_Geraete_des_Kontos_darf_aber_nichts_aendern()
+    {
+        var owner = await factory.CreateUserAsync();
+        var device = await CreateDeviceAsync(owner.Client, "Geteilt");
+        var gast = await factory.CreateUserAsync();
+        await factory.AddMemberAsync(owner.CustomerId, gast.UserId, AccountRole.Reader);
+
+        var reader = await factory.SwitchToAsync(gast, owner.CustomerId);
+
+        var liste = await reader.Client.GetFromJsonAsync<List<Device>>("/api/devices");
+        Assert.Equal(device.Id, Assert.Single(liste!).Id);
+
+        var post = await reader.Client.PostAsJsonAsync("/api/devices", new { name = "Neu" });
+        var put = await reader.Client.PutAsJsonAsync($"/api/devices/{device.Id}", new DeviceUpdateDto("Gekapert", null, null));
+        var delete = await reader.Client.DeleteAsync($"/api/devices/{device.Id}");
+
+        Assert.Equal(HttpStatusCode.Forbidden, post.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, put.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, delete.StatusCode);
+    }
+
+    [Fact]
+    public async Task Editor_darf_aendern_aber_nur_Owner_darf_loeschen()
+    {
+        var owner = await factory.CreateUserAsync();
+        var device = await CreateDeviceAsync(owner.Client, "Geteilt");
+        var helfer = await factory.CreateUserAsync();
+        await factory.AddMemberAsync(owner.CustomerId, helfer.UserId, AccountRole.Editor);
+
+        var editor = await factory.SwitchToAsync(helfer, owner.CustomerId);
+
+        var put = await editor.Client.PutAsJsonAsync($"/api/devices/{device.Id}", new DeviceUpdateDto("Umbenannt", null, null));
+        var delete = await editor.Client.DeleteAsync($"/api/devices/{device.Id}");
+
+        Assert.Equal(HttpStatusCode.NoContent, put.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, delete.StatusCode);
+    }
+
+    [Fact]
+    public async Task Login_ohne_Konto_sieht_keine_herrenlosen_Geraete()
+    {
+        // Legacy-Gerät ohne CustomerId — darf niemals bei einem Login ohne Konto landen
+        var hw = TestData.HardwareId();
+        await factory.CreateClient().PostAsJsonAsync("/api/sensor", new { hardwareId = hw, deviceName = TestData.DeviceName(), temperatur = 20.0 });
+
+        var user = await factory.CreateUserAsync();
+        await factory.WithDbAsync(async db =>
+        {
+            db.Accounts.RemoveRange(db.Accounts.Where(a => a.CustomerId == user.CustomerId));
+            await db.SaveChangesAsync();
+        });
+        var ohneKonto = await factory.LoginAsync(user.Email);
+
+        var response = await ohneKonto.Client.GetAsync("/api/devices");
+
+        Assert.Equal(string.Empty, ohneKonto.CustomerId);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
 }

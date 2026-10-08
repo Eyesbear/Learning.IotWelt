@@ -9,12 +9,26 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 ## [Unreleased] — v2.0 im Umbau
 
 ### Added
+- **Eigene Benutzerverwaltung in der API** (ASP.NET Core Identity): Registrierung mit E-Mail-Bestätigung, Login mit Sperre nach 5 Fehlversuchen, Passwort vergessen/ändern — `/api/auth/...`
+- **Eigene Token-Ausgabe**: JWT (HS256, 15 min) + Refresh-Token (14 Tage, nur als SHA-256-Hash gespeichert), Rotation bei jedem Refresh; Wiederverwendung eines verbrauchten Tokens widerruft alle Sitzungen des Logins
+- **Konten und Mitgliedschaften**: Registrierung legt ein Konto (`CustomerId`) mit dem Login als Owner an; Konto-Rollen Owner/Editor/Reader, Kontowechsel über `/api/auth/switch-account`
+- Policies `CanRead` / `CanEdit` / `IsOwner`; Geräte löschen nur noch als Owner
+- Admin-Seed beim Start aus `SeedAdmin:Email` / `SeedAdmin:Password` (User-Secrets bzw. Env-Vars)
+- 17 neue Tests für Auth-Flows und Rechte-Matrix (gesamt 35); Tests melden sich mit echten Tokens an statt per Test-Header
 - **`IotWelt.API.Tests`**: 18 Integrationstests (xUnit, `WebApplicationFactory`, SQL Server per Testcontainers) als Sicherheitsnetz vor dem Auth-Umbau — Sensor-Empfang (alle drei Zuordnungsmodi), Mandantentrennung bei `/api/devices`, Dashboard, Verlauf inkl. Bucket-Aggregation, Kundenprofil, Admin-Endpoints
 - `docs/user-stories/benutzerverwaltung.md`: User Stories für Konto/Login/Mitgliedschaft (Owner/Editor/Reader, Einladungen, Kontowechsel)
 
 ### Changed
+- **Migrationen neu aufgesetzt** (`InitialV2`) — alte Stände nur noch über Tag `v0.4.1-azure`; lokale DB neu erstellen
+- `CustomerProfiles` ersetzt durch `Accounts` + `AccountMemberships`; `CustomerService` ersetzt durch `CurrentAccount` (liest das aktive Konto aus dem Token)
 - `CLAUDE.md` für die v2.0-Zielarchitektur neu geschrieben (kein Azure, API als Token-Aussteller, Definition of Done, Konventionen)
 - `.claude/settings.local.json` nicht mehr versioniert
+
+### Removed
+- Entra-ID-Validierung in der API (`Microsoft.Identity.Web`, Section `AzureAd`)
+
+### Fixed
+- Admin-Geräteliste: Besitzerabfrage war von EF Core nicht übersetzbar (Filter nach der Projektion in einen Record)
 
 ### Security
 - Bekannt, durch Test dokumentiert: `POST /api/sensor` ist anonym — wer eine `hardwareId` kennt, kann das Gerät per `customer_id` einem anderen Kunden zuordnen. Wird in Phase 1 behoben.

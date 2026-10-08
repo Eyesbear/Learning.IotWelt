@@ -1,7 +1,10 @@
 using IotWelt.API.Data;
+using IotWelt.API.Models;
 using IotWelt.API.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.Identity.Web;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -9,32 +12,61 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
 
 builder.AddSqlServerDbContext<AppDbContext>("iotweltdb");
-// Add services to the container.
 
 builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
-// JWT-Validierung gegen Entra External ID
+builder.Services.AddOptions<JwtOptions>().BindConfiguration(JwtOptions.SectionName);
+builder.Services.AddOptions<AppLinkOptions>().BindConfiguration(AppLinkOptions.SectionName);
+
+// ASP.NET Core Identity ohne UI und ohne Cookies — die API gibt nur Tokens aus
+builder.Services
+    .AddIdentityCore<AppUser>(options =>
+    {
+        options.User.RequireUniqueEmail = true;
+        options.SignIn.RequireConfirmedEmail = true;
+        options.Password.RequiredLength = 8;
+        options.Password.RequireNonAlphanumeric = false;
+        options.Lockout.MaxFailedAccessAttempts = 5;
+        options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+    })
+    .AddRoles<IdentityRole>()
+    .AddEntityFrameworkStores<AppDbContext>()
+    .AddSignInManager()
+    .AddDefaultTokenProviders();
+
+// JWT-Validierung gegen den eigenen Signierschlüssel (HS256).
+// Konfiguration über Options statt direkt hier, damit Tests den Schlüssel per UseSetting setzen können.
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
+    .AddJwtBearer();
+
+builder.Services
+    .AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
+    .Configure<IOptions<JwtOptions>>((options, jwtOptions) =>
     {
-        options.UseSecurityTokenValidators = true;
-        options.MetadataAddress = builder.Configuration["AzureAd:MetadataAddress"]!;
-        options.TokenValidationParameters = new()
+        var jwt = jwtOptions.Value;
+        options.MapInboundClaims = false;   // Claim-Namen wie ausgestellt behalten ("sub", "role", …)
+        options.TokenValidationParameters = new TokenValidationParameters
         {
-            ValidateIssuer = true,
-            ValidIssuer = builder.Configuration["AzureAd:ValidIssuer"],
-            ValidateAudience = true,
-            ValidAudience = builder.Configuration["AzureAd:ClientId"],
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true
+            ValidIssuer = jwt.Issuer,
+            ValidAudience = jwt.Audience,
+            IssuerSigningKey = new SymmetricSecurityKey(jwt.GetKeyBytes()),
+            NameClaimType = "name",
+            RoleClaimType = "role",
+            ClockSkew = TimeSpan.FromSeconds(30)
         };
     });
 
-builder.Services.AddAuthorization();
-builder.Services.AddScoped<CustomerService>();
+builder.Services.AddAuthorization(options => options.AddAccountPolicies());
+
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<CurrentAccount>();
+builder.Services.AddScoped<AccountService>();
+builder.Services.AddScoped<TokenService>();
+builder.Services.AddTransient<IEmailSender<AppUser>, LoggingEmailSender>();
 
 var app = builder.Build();
 
@@ -53,5 +85,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+await app.SeedAdminAsync();
 
 app.Run();

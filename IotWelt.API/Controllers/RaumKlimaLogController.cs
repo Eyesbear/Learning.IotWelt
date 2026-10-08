@@ -7,10 +7,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace IotWelt.API.Controllers;
 
-[Authorize]
+[Authorize(Policy = Policies.CanRead)]
 [ApiController]
 [Route("api/[controller]")]
-public class RaumKlimaLogController(AppDbContext db, CustomerService customers) : ControllerBase
+public class RaumKlimaLogController(AppDbContext db, CurrentAccount current) : ControllerBase
 {
     [HttpGet("{deviceId:int}")]
     public async Task<ActionResult<IEnumerable<KlimaVerlaufPunkt>>> GetVerlauf(
@@ -18,7 +18,7 @@ public class RaumKlimaLogController(AppDbContext db, CustomerService customers) 
         [FromQuery] int minutes = 60,
         [FromQuery] string? range = null)
     {
-        var customerId = await customers.EnsureCustomerIdAsync(User);
+        var customerId = current.CustomerId;
 
         var deviceExists = await db.Devices.AnyAsync(
             d => d.Id == deviceId && d.CustomerId == customerId);

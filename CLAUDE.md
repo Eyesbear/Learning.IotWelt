@@ -13,8 +13,8 @@ Git- und VS-Schritte meist selbst aus — erst erklären, dann auf Rückmeldung 
 - **Kein Azure mehr.** Keine Entra ID, kein Microsoft Graph, keine Azure-SDKs neu einführen.
 - **API ist der Token-Aussteller:** ASP.NET Core Identity in `IotWelt.API`, eigene JWTs +
   rotierende Refresh-Tokens. Portal und MAUI-Client sind reine Clients der API.
-- **Mandantentrennung:** jeder Datenzugriff in der API filtert über `CustomerService` auf die
-  `CustomerId` des angemeldeten Users. Admin-Endpoints nur mit Rolle `Admin`.
+- **Mandantentrennung:** jeder Datenzugriff in der API filtert über `CurrentAccount` auf die
+  `CustomerId` des aktiven Kontos (Claim `account_id`). Admin-Endpoints nur mit Rolle `Admin`.
 - **Konto vs. Login:** Ein Konto (Mandant, `CustomerId`) gehört einem Eigentümer, kann aber
   **mehrere Logins** haben (z. B. lesender Zugriff für Dritte, ohne Credentials weiterzugeben).
   Rechte hängen daher an der Mitgliedschaft *Login ↔ Konto* (Konto-Rolle), nicht am Login selbst.
@@ -31,7 +31,7 @@ Git- und VS-Schritte meist selbst aus — erst erklären, dann auf Rückmeldung 
 | `IotWelt.API` | ASP.NET Core Web API | REST-API, EF Core, (künftig) Identity + Token-Ausgabe |
 | `MyOit.Portal` | Blazor Server (Radzen) | Web-Frontend, ruft nur die API auf |
 | `IotWelt.Common` | Class Library | DTOs, die API und Clients teilen |
-| `IotWelt.API.Tests` | xUnit | Integrationstests: `WebApplicationFactory` + SQL Server per Testcontainers, Test-Login per Header `X-Test-User` / `X-Test-Roles` |
+| `IotWelt.API.Tests` | xUnit | Integrationstests: `WebApplicationFactory` + SQL Server per Testcontainers, angemeldet wird mit echten Tokens (`factory.CreateUserAsync()` in `Infrastructure/TestUsers.cs`) |
 
 Geplant: `IotWelt.Maui` (Android/Windows).
 
