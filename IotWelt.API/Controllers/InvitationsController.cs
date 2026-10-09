@@ -19,6 +19,8 @@ public class InvitationsController(
     UserManager<AppUser> users,
     CurrentAccount current,
     InvitationService invitations,
+    AccountService accounts,
+    TokenService tokens,
     TimeProvider time) : ControllerBase
 {
     // Infos für die Annahmeseite im Portal
@@ -78,6 +80,61 @@ public class InvitationsController(
             return InvitationInvalid();   // zwischen Prüfung und Einlösen abgelaufen oder von anderer Anfrage verbraucht
 
         return new AccountSummaryDto(invitation.Account.CustomerId, invitation.Account.Name, invitation.Role.ToString(), IsActive: false);
+    }
+
+    // B2: neue Person legt über den Link einen Login an und ist danach Mitglied — ohne eigenes Konto.
+    // Die E-Mail gilt als bestätigt (der Link kam an diese Adresse). Antwort: Token-Paar im eingeladenen Konto.
+    [HttpPost("{token}/register")]
+    public async Task<ActionResult<TokenResponse>> Register(string token, RegisterFromInvitationRequest request)
+    {
+        var invitation = await invitations.FindByTokenAsync(token);
+        if (invitation is null)
+            return NotFound();
+        if (!invitation.IsPending(time.GetUtcNow().UtcDateTime))
+            return InvitationInvalid();
+        if (await users.FindByEmailAsync(invitation.Email) is not null)
+            return Problem(title: MemberErrors.LoginExists, statusCode: StatusCodes.Status409Conflict);
+
+        var user = new AppUser
+        {
+            UserName = invitation.Email,
+            Email = invitation.Email,
+            EmailConfirmed = true,
+            DisplayName = string.IsNullOrWhiteSpace(request.DisplayName) ? null : request.DisplayName.Trim()
+        };
+
+        // Login, Einlösen und Mitgliedschaft gemeinsam — scheitert eins (z. B. Passwortregeln),
+        // bleibt weder ein Login ohne Konto noch eine verbrauchte Einladung übrig
+        var strategy = db.Database.CreateExecutionStrategy();
+        var (failure, claimed) = await strategy.ExecuteAsync(async () =>
+        {
+            await using var tx = await db.Database.BeginTransactionAsync();
+
+            var result = await users.CreateAsync(user, request.Password);
+            if (!result.Succeeded)
+                return (result, false);
+            if (!await invitations.TryClaimAsync(invitation, user))
+                return (null, false);
+
+            await db.SaveChangesAsync();
+            await tx.CommitAsync();
+            return ((IdentityResult?)null, true);
+        });
+
+        if (failure is not null)
+            return IdentityProblem(failure);
+        if (!claimed)
+            return InvitationInvalid();
+
+        var membership = await accounts.ResolveActiveAsync(user, invitation.AccountId);
+        return await tokens.IssueAsync(user, membership);
+    }
+
+    private ActionResult IdentityProblem(IdentityResult result)
+    {
+        foreach (var error in result.Errors)
+            ModelState.AddModelError(error.Code, error.Description);
+        return ValidationProblem(ModelState);
     }
 
     private ObjectResult InvitationInvalid() =>

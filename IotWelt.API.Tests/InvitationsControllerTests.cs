@@ -149,6 +149,95 @@ public class InvitationsControllerTests(ApiFactory factory)
             (await invitee.Client.PostAsync($"/api/invitations/{replacedToken}/accept", null)).StatusCode);
     }
 
+    [Fact]
+    public async Task Neue_Person_legt_Login_an_und_ist_nur_Mitglied_des_einladenden_Kontos()
+    {
+        var owner = await factory.CreateUserAsync();
+        var email = TestData.Email();
+        var (_, token) = await factory.InviteAsync(owner, email, "Editor");
+
+        var response = await factory.CreateClient().PostAsJsonAsync($"/api/invitations/{token}/register",
+            new RegisterFromInvitationRequest(TestData.Password, "Gast"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var tokens = (await response.Content.ReadFromJsonAsync<TokenResponse>())!;
+        var invitee = await factory.AsTestUserAsync(email, tokens);
+        Assert.Equal(owner.CustomerId, invitee.CustomerId);
+
+        // Kein eigenes leeres Konto — nur die Mitgliedschaft aus der Einladung
+        var accounts = await invitee.Client.GetFromJsonAsync<List<AccountSummaryDto>>("/api/auth/accounts");
+        var account = Assert.Single(accounts!);
+        Assert.Equal("Editor", account.Role);
+        Assert.True(account.IsActive);
+    }
+
+    [Fact]
+    public async Task Ueber_Einladung_angelegter_Login_kann_sich_ohne_Bestaetigungsmail_anmelden()
+    {
+        var owner = await factory.CreateUserAsync();
+        var email = TestData.Email();
+        var (_, token) = await factory.InviteAsync(owner, email);
+        await factory.CreateClient().PostAsJsonAsync($"/api/invitations/{token}/register",
+            new RegisterFromInvitationRequest(TestData.Password, null));
+
+        var login = await factory.LoginAsync(email);
+
+        Assert.Equal(owner.CustomerId, login.CustomerId);
+    }
+
+    [Fact]
+    public async Task Registrieren_mit_vorhandenem_Login_gibt_409()
+    {
+        var owner = await factory.CreateUserAsync();
+        var invitee = await factory.CreateUserAsync();
+        var (_, token) = await factory.InviteAsync(owner, invitee.Email);
+
+        var response = await factory.CreateClient().PostAsJsonAsync($"/api/invitations/{token}/register",
+            new RegisterFromInvitationRequest(TestData.Password, null));
+
+        await AssertProblemAsync(response, HttpStatusCode.Conflict, MemberErrors.LoginExists);
+    }
+
+    [Fact]
+    public async Task Ungueltiges_Passwort_verbraucht_die_Einladung_nicht()
+    {
+        var owner = await factory.CreateUserAsync();
+        var email = TestData.Email();
+        var (_, token) = await factory.InviteAsync(owner, email);
+
+        var response = await factory.CreateClient().PostAsJsonAsync($"/api/invitations/{token}/register",
+            new RegisterFromInvitationRequest("kurz", null));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var info = await factory.CreateClient().GetFromJsonAsync<InvitationInfoDto>($"/api/invitations/{token}");
+        Assert.Equal(InvitationStatus.Open, info!.Status);
+        Assert.False(info.HasLogin);
+    }
+
+    [Fact]
+    public async Task Registrieren_mit_benutzter_oder_abgelaufener_Einladung_gibt_410()
+    {
+        var owner = await factory.CreateUserAsync();
+        var (_, usedToken) = await factory.InviteAsync(owner, TestData.Email());
+        await factory.CreateClient().PostAsJsonAsync($"/api/invitations/{usedToken}/register",
+            new RegisterFromInvitationRequest(TestData.Password, null));
+
+        var expiredEmail = TestData.Email();
+        var (expired, expiredToken) = await factory.InviteAsync(owner, expiredEmail);
+        await factory.WithDbAsync(db => db.AccountInvitations
+            .Where(i => i.Id == expired.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(i => i.ExpiresAt, DateTime.UtcNow.AddMinutes(-1))));
+
+        foreach (var token in new[] { usedToken, expiredToken })
+        {
+            var response = await factory.CreateClient().PostAsJsonAsync($"/api/invitations/{token}/register",
+                new RegisterFromInvitationRequest(TestData.Password, null));
+            await AssertProblemAsync(response, HttpStatusCode.Gone, MemberErrors.InvitationInvalid);
+        }
+        var info = await factory.CreateClient().GetFromJsonAsync<InvitationInfoDto>($"/api/invitations/{expiredToken}");
+        Assert.False(info!.HasLogin);   // für die abgelaufene Einladung wurde kein Login angelegt
+    }
+
     private static async Task AssertProblemAsync(HttpResponseMessage response, HttpStatusCode status, string title)
     {
         Assert.Equal(status, response.StatusCode);
