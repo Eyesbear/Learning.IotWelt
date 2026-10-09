@@ -18,6 +18,7 @@ public class MembersController(
     AppDbContext db,
     CurrentAccount current,
     UserManager<AppUser> users,
+    AccountService accounts,
     InvitationService invitations,
     TimeProvider time) : ControllerBase
 {
@@ -164,6 +165,22 @@ public class MembersController(
         return transferred
             ? NoContent()
             : Problem(title: MemberErrors.NotOwner, statusCode: StatusCodes.Status409Conflict);
+    }
+
+    // C4: aktives Konto mit Geräten, Messwerten, Mitgliedschaften und Einladungen löschen.
+    // Der Bestätigungsdialog ist Sache des Clients. Owner wird gegen die DB geprüft, nicht nur gegen
+    // das Token — nach einer Übertragung (C5) sagt das alte Token noch bis zu 15 min "Owner".
+    [HttpDelete("account")]
+    public async Task<IActionResult> DeleteAccount()
+    {
+        var account = await db.Accounts
+            .FirstOrDefaultAsync(a => a.CustomerId == current.CustomerId
+                && a.Memberships.Any(m => m.UserId == current.UserId && m.Role == AccountRole.Owner));
+        if (account is null)
+            return Problem(title: MemberErrors.NotOwner, statusCode: StatusCodes.Status409Conflict);
+
+        await accounts.DeleteAsync([account]);
+        return NoContent();
     }
 
     // Nur die Rollennamen Editor/Reader (Groß-/Kleinschreibung egal) — keine Zahlen wie "1", kein Owner

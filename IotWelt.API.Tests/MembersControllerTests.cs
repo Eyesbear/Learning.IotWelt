@@ -66,6 +66,9 @@ public class MembersControllerTests(ApiFactory factory)
             $"/api/members/{member.UserId}/role", new ChangeMemberRoleRequest("Editor"))).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await member.Client.DeleteAsync(
             $"/api/members/{owner.UserId}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await member.Client.PostAsJsonAsync(
+            "/api/members/transfer-ownership", new TransferOwnershipRequest(member.UserId))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await member.Client.DeleteAsync("/api/members/account")).StatusCode);
     }
 
     [Theory]
@@ -313,5 +316,66 @@ public class MembersControllerTests(ApiFactory factory)
         // Sicherheitsnetz unabhängig vom API-Code: der gefilterte eindeutige Index
         await Assert.ThrowsAsync<DbUpdateException>(() =>
             factory.AddMemberAsync(owner.CustomerId, other.UserId, AccountRole.Owner));
+    }
+
+    [Fact]
+    public async Task Owner_loescht_Konto_mit_Geraeten_Messwerten_Mitgliedern_und_Einladungen()
+    {
+        var owner = await factory.CreateUserAsync();
+        var member = await factory.InviteAndAcceptAsync(owner, await factory.CreateUserAsync());
+        await factory.InviteAsync(owner, TestData.Email());
+        var created = await owner.Client.PostAsJsonAsync("/api/devices", new { name = "Weg" });
+        var device = (await created.Content.ReadFromJsonAsync<Device>())!;
+        await factory.WithDbAsync(async db =>
+        {
+            db.RaumKlimaLogs.Add(new RaumKlimaLog { DeviceId = device.Id, Temperatur = 21.5, Zeitstempel = DateTime.UtcNow });
+            return await db.SaveChangesAsync();
+        });
+
+        var delete = await owner.Client.DeleteAsync("/api/members/account");
+
+        Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
+        var rest = await factory.WithDbAsync(async db => new
+        {
+            Accounts = await db.Accounts.CountAsync(a => a.CustomerId == owner.CustomerId),
+            Devices = await db.Devices.CountAsync(d => d.Id == device.Id),
+            Logs = await db.RaumKlimaLogs.CountAsync(l => l.DeviceId == device.Id),
+            Memberships = await db.AccountMemberships.CountAsync(m => m.Account.CustomerId == owner.CustomerId),
+            Invitations = await db.AccountInvitations.CountAsync(i => i.Account.CustomerId == owner.CustomerId)
+        });
+        Assert.Equal(new { Accounts = 0, Devices = 0, Logs = 0, Memberships = 0, Invitations = 0 }, rest);
+
+        // Mitglied landet beim Refresh wieder im eigenen Konto; der Owner hat gar keins mehr
+        var refreshedMember = await factory.RefreshAsync(member);
+        Assert.NotEqual(owner.CustomerId, refreshedMember.CustomerId);
+        var refreshedOwner = await factory.RefreshAsync(owner);
+        Assert.Equal(string.Empty, refreshedOwner.CustomerId);
+        Assert.Equal(HttpStatusCode.Forbidden, (await refreshedOwner.Client.GetAsync("/api/devices")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Konto_loeschen_mit_veraltetem_Owner_Token_wird_abgewiesen()
+    {
+        var owner = await factory.CreateUserAsync();
+        var member = await factory.InviteAndAcceptAsync(owner, await factory.CreateUserAsync());
+        await owner.Client.PostAsJsonAsync("/api/members/transfer-ownership", new TransferOwnershipRequest(member.UserId));
+
+        var delete = await owner.Client.DeleteAsync("/api/members/account");
+
+        Assert.Equal(HttpStatusCode.Conflict, delete.StatusCode);
+        Assert.Equal(1, await factory.WithDbAsync(db => db.Accounts.CountAsync(a => a.CustomerId == owner.CustomerId)));
+    }
+
+    [Fact]
+    public async Task Konto_loeschen_trifft_keine_fremden_Konten()
+    {
+        var owner = await factory.CreateUserAsync();
+        var fremd = await factory.CreateUserAsync();
+        await fremd.Client.PostAsJsonAsync("/api/devices", new { name = "Bleibt" });
+
+        await owner.Client.DeleteAsync("/api/members/account");
+
+        Assert.Equal(1, await factory.WithDbAsync(db => db.Accounts.CountAsync(a => a.CustomerId == fremd.CustomerId)));
+        Assert.Equal(1, await factory.WithDbAsync(db => db.Devices.CountAsync(d => d.CustomerId == fremd.CustomerId)));
     }
 }
