@@ -1,5 +1,6 @@
 using IotWelt.API.Data;
 using IotWelt.API.Models;
+using IotWelt.API.Services;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -21,7 +22,7 @@ public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     private readonly MsSqlContainer _sql = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-latest")
         .Build();
 
-    // Fängt Bestätigungs- und Reset-Links ab, die sonst nur ins Log geschrieben würden
+    // Fängt Bestätigungs-, Reset- und Einladungslinks ab, die sonst nur ins Log geschrieben würden
     public CapturingEmailSender Emails { get; } = new();
 
     public async Task InitializeAsync()
@@ -41,7 +42,10 @@ public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("Jwt:SigningKey", TestSigningKey);
 
         builder.ConfigureTestServices(services =>
-            services.AddSingleton<IEmailSender<AppUser>>(Emails));
+        {
+            services.AddSingleton<IEmailSender<AppUser>>(Emails);
+            services.AddSingleton<IInvitationEmailSender>(Emails);
+        });
     }
 
     public async Task<T> WithDbAsync<T>(Func<AppDbContext, Task<T>> action)
