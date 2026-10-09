@@ -14,3 +14,10 @@ public record AdminLoginDto(
 
 // Role: "Owner", "Editor", "Reader"
 public record AdminLoginAccountDto(string CustomerId, string Name, string Role);
+
+// Fehlercodes im "title" der ProblemDetails (409)
+public static class AdminLoginErrors
+{
+    // Admins können sich nicht selbst sperren, entmachten oder löschen — sonst sperrt man sich womöglich aus
+    public const string SelfAction = "self_action";
+}

@@ -16,6 +16,8 @@ namespace IotWelt.API.Controllers;
 public class AdminLoginsController(
     AppDbContext db,
     UserManager<AppUser> users,
+    CurrentAccount current,
+    TokenService tokens,
     TimeProvider time) : ControllerBase
 {
     // E1: alle Logins mit Konten und Rollen, sortiert nach E-Mail
@@ -48,4 +50,39 @@ public class AdminLoginsController(
                     .ToList()))
             .ToList();
     }
+
+    // E2: unbefristet sperren. Anmeldung und Refresh scheitern ab sofort (Refresh prüft die Sperre);
+    // alle Refresh-Tokens werden zusätzlich widerrufen. Ein Access-Token läuft nach max. 15 min ab.
+    [HttpPost("{userId}/lock")]
+    public async Task<IActionResult> Lock(string userId)
+    {
+        if (userId == current.UserId)
+            return SelfAction();
+
+        var user = await users.FindByIdAsync(userId);
+        if (user is null)
+            return NotFound();
+
+        // Ohne LockoutEnabled ignoriert Identity ein gesetztes LockoutEnd
+        await users.SetLockoutEnabledAsync(user, true);
+        await users.SetLockoutEndDateAsync(user, DateTimeOffset.MaxValue);
+        await tokens.RevokeAllAsync(user.Id);
+        return NoContent();
+    }
+
+    // E2: Sperre aufheben — auch eine automatische nach 5 Fehlversuchen
+    [HttpPost("{userId}/unlock")]
+    public async Task<IActionResult> Unlock(string userId)
+    {
+        var user = await users.FindByIdAsync(userId);
+        if (user is null)
+            return NotFound();
+
+        await users.SetLockoutEndDateAsync(user, null);
+        await users.ResetAccessFailedCountAsync(user);
+        return NoContent();
+    }
+
+    private ObjectResult SelfAction() =>
+        Problem(title: AdminLoginErrors.SelfAction, statusCode: StatusCodes.Status409Conflict);
 }
