@@ -17,6 +17,19 @@ public sealed record AuthResult<T>(T? Value, bool Succeeded, string? ErrorCode =
 // weil diese Aufrufe auch außerhalb von Komponenten (Login-Seite, Refresh, Logout) stattfinden.
 public sealed class AuthApiClient(HttpClient http)
 {
+    // Legt Login + eigenes Konto an; die API verschickt danach die Bestätigungsmail
+    public async Task<AuthResult> RegisterAsync(RegisterRequest request, CancellationToken ct = default)
+    {
+        var response = await http.PostAsJsonAsync("/api/auth/register", request, ct);
+        return response.IsSuccessStatusCode ? new AuthResult(true) : await ReadFailureAsync(response, ct);
+    }
+
+    public async Task<AuthResult> ConfirmEmailAsync(string userId, string code, CancellationToken ct = default)
+    {
+        var response = await http.PostAsJsonAsync("/api/auth/confirm-email", new ConfirmEmailRequest(userId, code), ct);
+        return response.IsSuccessStatusCode ? new AuthResult(true) : await ReadFailureAsync(response, ct);
+    }
+
     public async Task<AuthResult<TokenResponse>> LoginAsync(string email, string password, CancellationToken ct = default)
     {
         var response = await http.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, password), ct);
@@ -73,7 +86,12 @@ public sealed class AuthApiClient(HttpClient http)
 
         // Nur bei 401 steht ein Fehlercode im title; bei 400 ist er der allgemeine Validierungstext
         var errorCode = response.StatusCode == HttpStatusCode.Unauthorized ? problem?.Title : null;
-        var errors = problem?.Errors.Values.SelectMany(messages => messages).ToList();
+        // Schlüssel sind bei Identity-Fehlern deren Code (z. B. PasswordTooShort) → deutscher Text, sonst die API-Meldung.
+        // Distinct: Bei E-Mail = Benutzername meldet Identity DuplicateEmail und DuplicateUserName.
+        var errors = problem?.Errors
+            .SelectMany(error => IdentityErrorTexts.TryTranslate(error.Key, out var text) ? [text] : error.Value)
+            .Distinct()
+            .ToList();
         return new AuthResult(false, errorCode, errors);
     }
 }

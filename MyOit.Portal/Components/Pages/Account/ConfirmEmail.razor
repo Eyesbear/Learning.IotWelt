@@ -1,0 +1,70 @@
+@page "/account/confirm-email"
+@attribute [ExcludeFromInteractiveRouting]
+
+@using MyOit.Portal.Services.Auth
+@inject AuthApiClient AuthApi
+@inject ILogger<ConfirmEmail> Logger
+
+@* Ziel des Links aus der Bestätigungsmail (die API baut ihn mit userId und code). Statisch gerendert:
+   die Bestätigung läuft genau einmal pro Aufruf, nicht noch einmal beim Start eines Circuits. *@
+
+<PageTitle>E-Mail bestätigen</PageTitle>
+
+<div class="row">
+    <div class="col-md-6 col-lg-4">
+        <h2 class="mb-4">E-Mail bestätigen</h2>
+
+        @switch (status)
+        {
+            case Status.Confirmed:
+                <div class="alert alert-success">Ihre E-Mail-Adresse ist bestätigt. Sie können sich jetzt anmelden.</div>
+                <a href="account/login" class="btn btn-primary">Anmelden</a>
+                break;
+            case Status.Invalid:
+                <div class="alert alert-danger">
+                    Der Bestätigungslink ist ungültig oder abgelaufen.
+                    Bitte prüfen Sie, ob Sie den vollständigen Link aus der E-Mail geöffnet haben.
+                </div>
+                break;
+            case Status.Unavailable:
+                <div class="alert alert-warning">Die Bestätigung ist gerade nicht möglich. Bitte versuchen Sie es später erneut.</div>
+                break;
+        }
+    </div>
+</div>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromQuery]
+    private string? UserId { get; set; }
+
+    [SupplyParameterFromQuery]
+    private string? Code { get; set; }
+
+    private enum Status { Confirmed, Invalid, Unavailable }
+
+    private Status status;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (string.IsNullOrEmpty(UserId) || string.IsNullOrEmpty(Code))
+        {
+            status = Status.Invalid;
+            return;
+        }
+
+        try
+        {
+            // Code unverändert weiterreichen — die API dekodiert ihn selbst (Base64Url)
+            var result = await AuthApi.ConfirmEmailAsync(UserId, Code, HttpContext.RequestAborted);
+            status = result.Succeeded ? Status.Confirmed : Status.Invalid;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            Logger.LogWarning(ex, "E-Mail-Bestätigung: API nicht erreichbar");
+            status = Status.Unavailable;
+        }
+    }
+}
