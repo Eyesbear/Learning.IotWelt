@@ -6,7 +6,8 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
-@using Microsoft.Identity.Web
+@using System.Security.Claims
+@using MyOit.Portal.Services.Auth
 
 <PageTitle>Mein Profil</PageTitle>
 
@@ -94,23 +95,18 @@
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         var user = authState.User;
 
-        // External ID liefert given_name + family_name aus dem User Flow
-        var given = user.FindFirst("given_name")?.Value;
-        var family = user.FindFirst("family_name")?.Value;
-        userName = (given + " " + family).Trim();
-        if (string.IsNullOrEmpty(userName))
-            userName = user.FindFirst("name")?.Value;
-
-        userEmail = user.FindFirst("email")?.Value
-                 ?? user.FindFirst("preferred_username")?.Value;
+        // Claims aus dem Portal-Cookie (PortalClaims.CreatePrincipal): Anzeigename, sonst E-Mail
+        userName = user.Identity?.Name;
+        userEmail = user.FindFirst(ClaimTypes.Email)?.Value;
 
         try
         {
             customerId = await Api.GetCustomerIdAsync();
         }
-        catch (MicrosoftIdentityWebChallengeUserException)
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
         {
-            Navigation.NavigateTo("MicrosoftIdentity/Account/SignIn", forceLoad: true);
+            // Sitzung abgelaufen oder widerrufen → neu anmelden
+            Navigation.NavigateToLogin();
             return;
         }
         catch (Exception ex)

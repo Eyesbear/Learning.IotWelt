@@ -5,7 +5,7 @@
 @inject IotWeltApiClient Api
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
-@using Microsoft.Identity.Web
+@using MyOit.Portal.Services.Auth
 @using IotWelt.Common
 
 <PageTitle>Meine Geräte</PageTitle>
@@ -75,9 +75,10 @@
         {
             devices = await Api.GetDevicesAsync();
         }
-        catch (MicrosoftIdentityWebChallengeUserException)
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
         {
-            Navigation.NavigateTo("MicrosoftIdentity/Account/SignIn", forceLoad: true);
+            // Sitzung abgelaufen oder widerrufen → neu anmelden
+            Navigation.NavigateToLogin();
         }
         catch (Exception ex)
         {
@@ -90,6 +91,11 @@
         try
         {
             await Api.UpdateDeviceAsync(d.Id, new DeviceUpdateDto(d.Name, d.Standort, d.Caption));
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            // Sitzung abgelaufen oder widerrufen → neu anmelden
+            Navigation.NavigateToLogin();
         }
         catch (Exception ex)
         {
@@ -106,6 +112,11 @@
         {
             await Api.DeleteDeviceAsync(d.Id);
             devices.Remove(d);
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            // Sitzung abgelaufen oder widerrufen → neu anmelden
+            Navigation.NavigateToLogin();
         }
         catch (Exception ex)
         {
