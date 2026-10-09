@@ -9,6 +9,12 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 ## [Unreleased] — v2.0 im Umbau
 
 ### Added
+- **Einladungen** (Stories B1–B3): Owner lädt per E-Mail als Editor/Reader ein (`POST /api/members/invitations`), Link 7 Tage gültig und nur einmal nutzbar, Token nur als SHA-256-Hash gespeichert. Annahme mit vorhandenem Login (`POST /api/invitations/{token}/accept`, E-Mail muss passen) oder mit neuem Login ohne eigenes Konto (`POST /api/invitations/{token}/register`, liefert direkt ein Token-Paar)
+- **Mitgliederverwaltung** für Owner (`/api/members`, Stories C1–C5): Mitglieder und offene Einladungen anzeigen, Rolle ändern, Mitglied entfernen, Ownership übertragen, Konto löschen (mit Geräten, Messwerten, Mitgliedschaften, Einladungen)
+- **Eigenen Login löschen** (`DELETE /api/auth/me`, Story A4) mit Passwortbestätigung; abgelehnt, solange der Login Owner eines Kontos ist
+- **Login-Verwaltung für System-Admins** (`/api/admin/logins`, Stories E1–E3): Logins mit Konten und Rollen auflisten, sperren/entsperren (widerruft alle Refresh-Tokens), Admin-Rolle vergeben/entziehen, Login löschen; nie am eigenen Login
+- Tabelle `AccountInvitations` und gefilterter eindeutiger Index `IX_AccountMemberships_OneOwnerPerAccount` (genau ein Owner pro Konto, auch auf DB-Ebene) — Migrationen `AccountInvitations`, `OneOwnerPerAccount`
+- 55 neue Tests für Einladungen, Mitglieder, Login-Löschung und Admin-Login-Verwaltung (gesamt 91); Test-Helfer `InviteAndAcceptAsync` und `RefreshAsync`
 - **Eigene Benutzerverwaltung in der API** (ASP.NET Core Identity): Registrierung mit E-Mail-Bestätigung, Login mit Sperre nach 5 Fehlversuchen, Passwort vergessen/ändern — `/api/auth/...`
 - **Eigene Token-Ausgabe**: JWT (HS256, 15 min) + Refresh-Token (14 Tage, nur als SHA-256-Hash gespeichert), Rotation bei jedem Refresh; Wiederverwendung eines verbrauchten Tokens widerruft alle Sitzungen des Logins
 - **Konten und Mitgliedschaften**: Registrierung legt ein Konto (`CustomerId`) mit dem Login als Owner an; Konto-Rollen Owner/Editor/Reader, Kontowechsel über `/api/auth/switch-account`
@@ -19,6 +25,7 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 - `docs/user-stories/benutzerverwaltung.md`: User Stories für Konto/Login/Mitgliedschaft (Owner/Editor/Reader, Einladungen, Kontowechsel)
 
 ### Changed
+- Token-Erzeugung und -Hash aus `TokenService` nach `SecureToken` ausgelagert (gemeinsam für Refresh-Tokens und Einladungen); Löschlogik für Konten nach `AccountService.DeleteAsync` (genutzt von C4 und `DELETE /api/admin/customers/{ownerId}`, Verhalten unverändert)
 - **Migrationen neu aufgesetzt** (`InitialV2`) — alte Stände nur noch über Tag `v0.4.1-azure`; lokale DB neu erstellen
 - `CustomerProfiles` ersetzt durch `Accounts` + `AccountMemberships`; `CustomerService` ersetzt durch `CurrentAccount` (liest das aktive Konto aus dem Token)
 - `CLAUDE.md` für die v2.0-Zielarchitektur neu geschrieben (kein Azure, API als Token-Aussteller, Definition of Done, Konventionen)
