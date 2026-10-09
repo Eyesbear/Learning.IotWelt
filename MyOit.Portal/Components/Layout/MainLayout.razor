@@ -10,10 +10,13 @@
             <AuthorizeView>
                 <Authorized>
                     <span class="me-3">@context.User.Identity?.Name</span>
-                    <a href="MicrosoftIdentity/Account/SignOut">Abmelden</a>
+                    <form action="account/logout" method="post" class="d-inline">
+                        <AntiforgeryToken />
+                        <button type="submit" class="btn btn-link p-0 align-baseline">Abmelden</button>
+                    </form>
                 </Authorized>
                 <NotAuthorized>
-                    <a href="MicrosoftIdentity/Account/SignIn">Anmelden</a>
+                    <a href="account/login">Anmelden</a>
                 </NotAuthorized>
             </AuthorizeView>
         </div>

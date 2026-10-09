@@ -64,9 +64,10 @@
             <div class="card-body">
                 <h5 class="card-title">Konto verwalten</h5>
                 <div class="d-flex gap-2 flex-wrap">
-                    <a href="MicrosoftIdentity/Account/SignOut" class="btn btn-outline-secondary">
-                        Abmelden
-                    </a>
+                    <form action="account/logout" method="post">
+                        <AntiforgeryToken />
+                        <button type="submit" class="btn btn-outline-secondary">Abmelden</button>
+                    </form>
                     <a href="/account/delete" class="btn btn-outline-danger">
                         Konto löschen
                     </a>

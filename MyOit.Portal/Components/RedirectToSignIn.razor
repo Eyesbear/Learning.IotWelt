@@ -1,12 +1,25 @@
 ﻿@inject NavigationManager Navigation
 
+@if (isAuthenticated)
+{
+    @* Angemeldet, aber ohne die nötige Rolle — ein Login-Redirect würde hier nur im Kreis führen *@
+    <div class="alert alert-warning">Für diese Seite fehlt Ihnen die Berechtigung.</div>
+}
+
 @code {
-    protected override void OnInitialized()
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationState { get; set; } = default!;
+
+    private bool isAuthenticated;
+
+    protected override async Task OnInitializedAsync()
     {
-        var returnUrl = Uri.EscapeDataString(
-            Navigation.ToBaseRelativePath(Navigation.Uri));
-        Navigation.NavigateTo(
-            $"MicrosoftIdentity/Account/SignIn?redirectUri=/{returnUrl}",
-            forceLoad: true);
+        var user = (await AuthenticationState).User;
+        isAuthenticated = user.Identity?.IsAuthenticated == true;
+        if (isAuthenticated)
+            return;
+
+        var returnUrl = Uri.EscapeDataString("/" + Navigation.ToBaseRelativePath(Navigation.Uri));
+        Navigation.NavigateTo($"account/login?ReturnUrl={returnUrl}", forceLoad: true);
     }
 }
