@@ -26,6 +26,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
         {
             e.HasIndex(m => new { m.AccountId, m.UserId }).IsUnique();
 
+            // Invariante "genau ein Owner pro Konto" als Sicherheitsnetz in der DB:
+            // gefilterter eindeutiger Index — gilt nur für Zeilen mit Role = 'Owner'
+            e.HasIndex(m => m.AccountId)
+                .IsUnique()
+                .HasFilter("[Role] = 'Owner'")
+                .HasDatabaseName("IX_AccountMemberships_OneOwnerPerAccount");
+
             // Als Text speichern — in SSMS lesbar und unabhängig von der Enum-Reihenfolge
             e.Property(m => m.Role).HasConversion<string>().HasMaxLength(16);
 

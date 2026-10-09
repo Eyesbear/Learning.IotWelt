@@ -246,4 +246,72 @@ public class MembersControllerTests(ApiFactory factory)
         var accounts = await refreshed.Client.GetFromJsonAsync<List<AccountSummaryDto>>("/api/auth/accounts");
         Assert.DoesNotContain(accounts!, a => a.CustomerId == owner.CustomerId);
     }
+
+    [Fact]
+    public async Task Ownership_uebertragen_bisheriger_Owner_wird_Editor()
+    {
+        var owner = await factory.CreateUserAsync();
+        var member = await factory.InviteAndAcceptAsync(owner, await factory.CreateUserAsync(), "Reader");
+
+        var transfer = await owner.Client.PostAsJsonAsync("/api/members/transfer-ownership",
+            new TransferOwnershipRequest(member.UserId));
+
+        Assert.Equal(HttpStatusCode.NoContent, transfer.StatusCode);
+        var newOwner = await factory.RefreshAsync(member);
+        var overview = await newOwner.Client.GetFromJsonAsync<MembersOverviewDto>("/api/members");
+        Assert.Equal(member.UserId, Assert.Single(overview!.Members, m => m.Role == "Owner").UserId);
+        Assert.Contains(overview.Members, m => m.UserId == owner.UserId && m.Role == "Editor");
+
+        // Der alte Owner verliert die Owner-Rechte spätestens beim Refresh
+        var oldOwner = await factory.RefreshAsync(owner);
+        Assert.Equal(HttpStatusCode.Forbidden, (await oldOwner.Client.GetAsync("/api/members")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Zweite_Uebertragung_mit_veraltetem_Token_wird_abgewiesen()
+    {
+        var owner = await factory.CreateUserAsync();
+        var first = await factory.InviteAndAcceptAsync(owner, await factory.CreateUserAsync());
+        var second = await factory.InviteAndAcceptAsync(owner, await factory.CreateUserAsync());
+        await owner.Client.PostAsJsonAsync("/api/members/transfer-ownership", new TransferOwnershipRequest(first.UserId));
+
+        // Access-Token des alten Owners sagt noch "Owner" — die DB nicht mehr
+        var again = await owner.Client.PostAsJsonAsync("/api/members/transfer-ownership",
+            new TransferOwnershipRequest(second.UserId));
+
+        Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
+        var problem = await again.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.Equal(MemberErrors.NotOwner, problem!.Title);
+        var owners = await factory.WithDbAsync(db => db.AccountMemberships
+            .Where(m => m.Account.CustomerId == owner.CustomerId && m.Role == AccountRole.Owner)
+            .Select(m => m.UserId)
+            .ToListAsync());
+        Assert.Equal(first.UserId, Assert.Single(owners));
+    }
+
+    [Fact]
+    public async Task Uebertragung_nur_an_Mitglieder_des_Kontos()
+    {
+        var owner = await factory.CreateUserAsync();
+        var fremd = await factory.CreateUserAsync();
+
+        var toStranger = await owner.Client.PostAsJsonAsync("/api/members/transfer-ownership",
+            new TransferOwnershipRequest(fremd.UserId));
+        var toSelf = await owner.Client.PostAsJsonAsync("/api/members/transfer-ownership",
+            new TransferOwnershipRequest(owner.UserId));
+
+        Assert.Equal(HttpStatusCode.NotFound, toStranger.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, toSelf.StatusCode);
+    }
+
+    [Fact]
+    public async Task Datenbank_verhindert_einen_zweiten_Owner()
+    {
+        var owner = await factory.CreateUserAsync();
+        var other = await factory.CreateUserAsync();
+
+        // Sicherheitsnetz unabhängig vom API-Code: der gefilterte eindeutige Index
+        await Assert.ThrowsAsync<DbUpdateException>(() =>
+            factory.AddMemberAsync(owner.CustomerId, other.UserId, AccountRole.Owner));
+    }
 }

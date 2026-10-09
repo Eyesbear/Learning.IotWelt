@@ -17,6 +17,9 @@ public record InviteMemberRequest(string Email, string Role);
 // C2: Role nur "Editor" oder "Reader"
 public record ChangeMemberRoleRequest(string Role);
 
+// C5: UserId eines bestehenden Mitglieds — wird Owner, der bisherige Owner wird Editor
+public record TransferOwnershipRequest(string UserId);
+
 // Annahmeseite (/api/invitations/{token}): Status siehe InvitationStatus.
 // HasLogin: Für die E-Mail gibt es schon einen Login → anmelden und annehmen (B3), sonst Login anlegen (B2).
 public record InvitationInfoDto(string AccountName, string Email, string Role, DateTime ExpiresAt, string Status, bool HasLogin);
@@ -36,6 +39,7 @@ public static class MemberErrors
 {
     public const string AlreadyMember = "already_member";
     public const string OwnerMembership = "owner_membership";                 // Owner ändern/entfernen nur per Übertragung (409)
+    public const string NotOwner = "not_owner";                               // Token sagt Owner, DB nicht mehr (schon übertragen, 409)
     public const string InvitationInvalid = "invitation_invalid";             // abgelaufen oder schon angenommen (410)
     public const string InvitationEmailMismatch = "invitation_email_mismatch"; // angemeldet mit anderer E-Mail (403)
     public const string LoginExists = "login_exists";                         // B2, obwohl es schon einen Login gibt → B3 (409)

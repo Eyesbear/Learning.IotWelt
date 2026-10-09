@@ -123,6 +123,49 @@ public class MembersController(
         return NoContent();
     }
 
+    // C5: Ownership an ein bestehendes Mitglied übertragen; der bisherige Owner wird Editor.
+    // Das eigene Access-Token sagt danach noch bis zu 15 min "Owner" — der Client sollte sofort refreshen.
+    [HttpPost("transfer-ownership")]
+    public async Task<IActionResult> TransferOwnership(TransferOwnershipRequest request)
+    {
+        var target = await FindMembershipAsync(request.UserId);
+        if (target is null)
+            return NotFound();
+        if (target.Role == AccountRole.Owner)
+        {
+            ModelState.AddModelError(nameof(request.UserId), "Dieses Mitglied ist bereits Owner.");
+            return ValidationProblem(ModelState);
+        }
+
+        // Zwei bedingte UPDATEs in einer Transaktion, Reihenfolge wichtig: erst abgeben, dann übernehmen —
+        // sonst gäbe es kurz zwei Owner und der Index IX_AccountMemberships_OneOwnerPerAccount schlägt an.
+        // Die Bedingung "Role = Owner" verhindert, dass zwei gleichzeitige Übertragungen beide durchgehen.
+        var strategy = db.Database.CreateExecutionStrategy();
+        var transferred = await strategy.ExecuteAsync(async () =>
+        {
+            await using var tx = await db.Database.BeginTransactionAsync();
+
+            var demoted = await db.AccountMemberships
+                .Where(m => m.AccountId == target.AccountId && m.UserId == current.UserId && m.Role == AccountRole.Owner)
+                .ExecuteUpdateAsync(s => s.SetProperty(m => m.Role, AccountRole.Editor));
+            if (demoted == 0)
+                return false;   // Aufrufer ist (nicht mehr) Owner — gar nicht erst einen neuen ernennen
+
+            var promoted = await db.AccountMemberships
+                .Where(m => m.Id == target.Id && m.Role != AccountRole.Owner)
+                .ExecuteUpdateAsync(s => s.SetProperty(m => m.Role, AccountRole.Owner));
+            if (promoted == 0)
+                return false;   // Ziel inzwischen entfernt — ohne Commit → Rollback, alter Owner bleibt
+
+            await tx.CommitAsync();
+            return true;
+        });
+
+        return transferred
+            ? NoContent()
+            : Problem(title: MemberErrors.NotOwner, statusCode: StatusCodes.Status409Conflict);
+    }
+
     // Nur die Rollennamen Editor/Reader (Groß-/Kleinschreibung egal) — keine Zahlen wie "1", kein Owner
     private static bool TryParseMemberRole(string? value, out AccountRole role) =>
         Enum.TryParse(value, ignoreCase: true, out role)
