@@ -2,6 +2,7 @@ using IotWelt.API.Data;
 using IotWelt.API.Models;
 using IotWelt.API.Services;
 using IotWelt.Common.Admin;
+using IotWelt.Common.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -81,6 +82,55 @@ public class AdminLoginsController(
         await users.SetLockoutEndDateAsync(user, null);
         await users.ResetAccessFailedCountAsync(user);
         return NoContent();
+    }
+
+    // E3: System-Admin ernennen. Die Rolle existiert sicher — der Aufrufer hat sie ja selbst.
+    // Wirkt beim nächsten Token-Refresh (Rollen werden beim Ausstellen frisch gelesen). Idempotent.
+    [HttpPut("{userId}/admin")]
+    public async Task<IActionResult> GrantAdmin(string userId)
+    {
+        var user = await users.FindByIdAsync(userId);
+        if (user is null)
+            return NotFound();
+
+        if (!await users.IsInRoleAsync(user, Policies.AdminRole))
+            await users.AddToRoleAsync(user, Policies.AdminRole);
+        return NoContent();
+    }
+
+    // E3: Admin-Rolle entziehen — nicht sich selbst, so bleibt immer mindestens ein Admin übrig. Idempotent.
+    [HttpDelete("{userId}/admin")]
+    public async Task<IActionResult> RevokeAdmin(string userId)
+    {
+        if (userId == current.UserId)
+            return SelfAction();
+
+        var user = await users.FindByIdAsync(userId);
+        if (user is null)
+            return NotFound();
+
+        if (await users.IsInRoleAsync(user, Policies.AdminRole))
+            await users.RemoveFromRoleAsync(user, Policies.AdminRole);
+        return NoContent();
+    }
+
+    // Login löschen. Wie bei A4 abgelehnt, solange der Login Owner eines Kontos ist —
+    // Konten löscht der Admin vorher bewusst (DELETE /api/admin/customers/{ownerId}).
+    [HttpDelete("{userId}")]
+    public async Task<IActionResult> Delete(string userId)
+    {
+        if (userId == current.UserId)
+            return SelfAction();
+
+        var user = await users.FindByIdAsync(userId);
+        if (user is null)
+            return NotFound();
+
+        if (await db.AccountMemberships.AnyAsync(m => m.UserId == user.Id && m.Role == AccountRole.Owner))
+            return Problem(title: DeleteLoginErrors.OwnsAccounts, statusCode: StatusCodes.Status409Conflict);
+
+        var result = await users.DeleteAsync(user);
+        return result.Succeeded ? NoContent() : Problem(string.Join("; ", result.Errors.Select(e => e.Description)));
     }
 
     private ObjectResult SelfAction() =>

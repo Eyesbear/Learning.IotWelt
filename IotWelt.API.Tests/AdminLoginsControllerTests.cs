@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using IotWelt.API.Tests.Infrastructure;
 using IotWelt.Common.Admin;
 using IotWelt.Common.Auth;
+using IotWelt.Common.Members;
 using Microsoft.AspNetCore.Mvc;
 
 namespace IotWelt.API.Tests;
@@ -40,6 +41,9 @@ public class AdminLoginsControllerTests(ApiFactory factory)
         Assert.Equal(HttpStatusCode.Forbidden, (await user.Client.GetAsync("/api/admin/logins")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await user.Client.PostAsync($"/api/admin/logins/{other.UserId}/lock", null)).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await user.Client.PostAsync($"/api/admin/logins/{other.UserId}/unlock", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await user.Client.PutAsync($"/api/admin/logins/{user.UserId}/admin", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await user.Client.DeleteAsync($"/api/admin/logins/{other.UserId}/admin")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await user.Client.DeleteAsync($"/api/admin/logins/{other.UserId}")).StatusCode);
     }
 
     [Fact]
@@ -92,6 +96,83 @@ public class AdminLoginsControllerTests(ApiFactory factory)
 
         Assert.Equal(HttpStatusCode.NotFound, (await admin.Client.PostAsync("/api/admin/logins/gibt-es-nicht/lock", null)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await admin.Client.PostAsync("/api/admin/logins/gibt-es-nicht/unlock", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await admin.Client.PutAsync("/api/admin/logins/gibt-es-nicht/admin", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await admin.Client.DeleteAsync("/api/admin/logins/gibt-es-nicht/admin")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await admin.Client.DeleteAsync("/api/admin/logins/gibt-es-nicht")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Ernannter_Admin_bekommt_die_Rolle_beim_naechsten_Refresh()
+    {
+        var admin = await factory.CreateUserAsync(admin: true);
+        var user = await factory.CreateUserAsync();
+
+        var grant = await admin.Client.PutAsync($"/api/admin/logins/{user.UserId}/admin", null);
+
+        Assert.Equal(HttpStatusCode.NoContent, grant.StatusCode);
+        var refreshed = await factory.RefreshAsync(user);
+        var me = await refreshed.Client.GetFromJsonAsync<MeResponse>("/api/auth/me");
+        Assert.True(me!.IsAdmin);
+        Assert.Equal(HttpStatusCode.OK, (await refreshed.Client.GetAsync("/api/admin/logins")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Entzogene_Admin_Rolle_wirkt_beim_naechsten_Refresh()
+    {
+        var admin = await factory.CreateUserAsync(admin: true);
+        var other = await factory.CreateUserAsync(admin: true);
+
+        var revoke = await admin.Client.DeleteAsync($"/api/admin/logins/{other.UserId}/admin");
+
+        Assert.Equal(HttpStatusCode.NoContent, revoke.StatusCode);
+        var refreshed = await factory.RefreshAsync(other);
+        Assert.Equal(HttpStatusCode.Forbidden, (await refreshed.Client.GetAsync("/api/admin/logins")).StatusCode);
+        var logins = await admin.Client.GetFromJsonAsync<List<AdminLoginDto>>("/api/admin/logins");
+        Assert.False(Assert.Single(logins!, l => l.UserId == other.UserId).IsAdmin);
+    }
+
+    [Fact]
+    public async Task Admin_kann_sich_nicht_selbst_entmachten_oder_loeschen()
+    {
+        var admin = await factory.CreateUserAsync(admin: true);
+
+        await AssertProblemAsync(await admin.Client.DeleteAsync($"/api/admin/logins/{admin.UserId}/admin"),
+            HttpStatusCode.Conflict, AdminLoginErrors.SelfAction);
+        await AssertProblemAsync(await admin.Client.DeleteAsync($"/api/admin/logins/{admin.UserId}"),
+            HttpStatusCode.Conflict, AdminLoginErrors.SelfAction);
+
+        var refreshed = await factory.RefreshAsync(admin);
+        Assert.Equal(HttpStatusCode.OK, (await refreshed.Client.GetAsync("/api/admin/logins")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Admin_loescht_Login_ohne_eigenes_Konto()
+    {
+        var admin = await factory.CreateUserAsync(admin: true);
+        var owner = await factory.CreateUserAsync();
+        var member = await factory.CreateUserAsync();
+        var (_, token) = await factory.InviteAsync(owner, member.Email);
+        await member.Client.PostAsync($"/api/invitations/{token}/accept", null);
+        await member.Client.DeleteAsync("/api/members/account");   // eigenes Konto weg → nur noch Reader bei owner
+
+        var delete = await admin.Client.DeleteAsync($"/api/admin/logins/{member.UserId}");
+
+        Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await LoginAsync(member.Email)).StatusCode);
+        var overview = await owner.Client.GetFromJsonAsync<MembersOverviewDto>("/api/members");
+        Assert.DoesNotContain(overview!.Members, m => m.UserId == member.UserId);
+    }
+
+    [Fact]
+    public async Task Admin_kann_Owner_Login_nicht_loeschen()
+    {
+        var admin = await factory.CreateUserAsync(admin: true);
+        var owner = await factory.CreateUserAsync();
+
+        var delete = await admin.Client.DeleteAsync($"/api/admin/logins/{owner.UserId}");
+
+        await AssertProblemAsync(delete, HttpStatusCode.Conflict, DeleteLoginErrors.OwnsAccounts);
+        Assert.Equal(HttpStatusCode.OK, (await LoginAsync(owner.Email)).StatusCode);
     }
 
     private Task<HttpResponseMessage> LoginAsync(string email) =>
