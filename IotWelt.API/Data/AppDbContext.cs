@@ -11,6 +11,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
     public DbSet<Account> Accounts => Set<Account>();
     public DbSet<AccountMembership> AccountMemberships => Set<AccountMembership>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<AccountInvitation> AccountInvitations => Set<AccountInvitation>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -36,6 +37,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
         {
             e.HasIndex(t => t.TokenHash).IsUnique();
             e.HasOne(t => t.User).WithMany().OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<AccountInvitation>(e =>
+        {
+            e.HasIndex(i => i.TokenHash).IsUnique();
+            e.HasIndex(i => new { i.AccountId, i.Email });
+            e.Property(i => i.Role).HasConversion<string>().HasMaxLength(16);
+
+            // Konto gelöscht → offene und angenommene Einladungen verschwinden mit (C4)
+            e.HasOne(i => i.Account).WithMany().OnDelete(DeleteBehavior.Cascade);
         });
     }
 }
