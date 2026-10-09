@@ -31,7 +31,8 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 - Admin-Geräteliste: Besitzerabfrage war von EF Core nicht übersetzbar (Filter nach der Projektion in einen Record)
 
 ### Security
-- Bekannt, durch Test dokumentiert: `POST /api/sensor` ist anonym — wer eine `hardwareId` kennt, kann das Gerät per `customer_id` einem anderen Kunden zuordnen. Wird in Phase 1 behoben.
+- `POST /api/sensor` hängt ein Gerät mit vorhandenem Besitzer nicht mehr um — bisher konnte jeder, der die `hardwareId` kannte, das Gerät per `customer_id` in ein fremdes Konto holen. Abweichende `customer_id` wird ignoriert und als Warnung geloggt; herrenlose Geräte werden weiterhin beim ersten Melden zugeordnet
+- Bekannt, offen bis Phase 6 (Geräte-Schlüssel): Wer eine `hardwareId` kennt, kann weiterhin Messwerte einschleusen; wer eine `customer_id` kennt, kann neue Geräte in dieses Konto melden
 
 ---
 

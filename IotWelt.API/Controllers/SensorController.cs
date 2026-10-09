@@ -9,7 +9,7 @@ namespace IotWelt.API.Controllers;
 [AllowAnonymous]
 [ApiController]
 [Route("api/[controller]")]
-public class SensorController(AppDbContext db) : ControllerBase
+public class SensorController(AppDbContext db, ILogger<SensorController> logger) : ControllerBase
 {
     [HttpPost]
     public async Task<IActionResult> Report(SensorDataDto data)
@@ -44,10 +44,22 @@ public class SensorController(AppDbContext db) : ControllerBase
                     changed = true;
                 }
 
+                // Nur Erstzuordnung herrenloser Geräte — ein vorhandener Besitzer wird nie über diesen
+                // anonymen Endpoint geändert (sonst könnte jeder mit bekannter HardwareId ein Gerät übernehmen).
+                // Messwert trotzdem speichern und 200 liefern: die Firmware wertet Fehler nicht aus.
                 if (!string.IsNullOrEmpty(data.CustomerId) && device.CustomerId != data.CustomerId)
                 {
-                    device.CustomerId = data.CustomerId;
-                    changed = true;
+                    if (device.CustomerId is null)
+                    {
+                        device.CustomerId = data.CustomerId;
+                        changed = true;
+                    }
+                    else
+                    {
+                        logger.LogWarning(
+                            "Sensor {HardwareId} meldet CustomerId {Reported}, gehört aber {Owner} — Besitzer bleibt unverändert",
+                            data.HardwareId, data.CustomerId, device.CustomerId);
+                    }
                 }
 
                 if (changed)

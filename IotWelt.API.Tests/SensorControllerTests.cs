@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace IotWelt.API.Tests;
 
-// Charakterisierungstests: halten das Verhalten von POST /api/sensor vor dem Auth-Umbau fest.
+// POST /api/sensor (anonym, ESP32): Zuordnung über HardwareId, CustomerId+Name oder nur Name.
 [Collection(ApiCollection.Name)]
 public class SensorControllerTests(ApiFactory factory)
 {
@@ -57,20 +57,37 @@ public class SensorControllerTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task Bekannte_HardwareId_mit_anderer_CustomerId_wechselt_den_Besitzer()
+    public async Task Bekannte_HardwareId_mit_anderer_CustomerId_wechselt_den_Besitzer_nicht()
     {
-        // ACHTUNG — dokumentiert eine Sicherheitslücke des Ist-Zustands:
-        // Der Endpoint ist anonym; wer eine HardwareId kennt, kann das Gerät einem anderen Kunden zuordnen.
-        // Wird in Phase 1 (Geräte-Schlüssel) geschlossen — dann muss dieser Test angepasst werden.
+        // Der Endpoint ist anonym: wer eine HardwareId kennt, darf das Gerät nicht in ein anderes Konto holen.
+        // Der Messwert wird trotzdem gespeichert (Firmware wertet Fehler nicht aus) — umhängen nur über Portal/Admin.
         var hw = TestData.HardwareId();
         var original = TestData.CustomerId();
         var angreifer = TestData.CustomerId();
 
-        await ReportAsync(new { hardwareId = hw, customer_id = original, deviceName = "Bad" });
-        await ReportAsync(new { hardwareId = hw, customer_id = angreifer, deviceName = "Bad" });
+        await ReportAsync(new { hardwareId = hw, customer_id = original, deviceName = "Bad", temperatur = 20.0 });
+        var response = await ReportAsync(new { hardwareId = hw, customer_id = angreifer, deviceName = "Bad", temperatur = 21.0 });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var device = await factory.WithDbAsync(db => db.Devices.SingleAsync(d => d.HardwareId == hw));
+        Assert.Equal(original, device.CustomerId);
+
+        var logCount = await factory.WithDbAsync(db => db.RaumKlimaLogs.CountAsync(l => l.DeviceId == device.Id));
+        Assert.Equal(2, logCount);
+    }
+
+    [Fact]
+    public async Task Bekannte_HardwareId_ohne_Besitzer_wird_beim_ersten_Melden_mit_CustomerId_zugeordnet()
+    {
+        // Erstzuordnung: Gerät war bisher herrenlos (z. B. Firmware ohne customer_id) — das bleibt erlaubt
+        var hw = TestData.HardwareId();
+        var customer = TestData.CustomerId();
+
+        await ReportAsync(new { hardwareId = hw, deviceName = "Flur", temperatur = 20.0 });
+        await ReportAsync(new { hardwareId = hw, customer_id = customer, deviceName = "Flur", temperatur = 20.5 });
 
         var device = await factory.WithDbAsync(db => db.Devices.SingleAsync(d => d.HardwareId == hw));
-        Assert.Equal(angreifer, device.CustomerId);
+        Assert.Equal(customer, device.CustomerId);
     }
 
     [Fact]
