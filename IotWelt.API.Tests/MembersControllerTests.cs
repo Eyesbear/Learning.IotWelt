@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using IotWelt.API.Models;
 using IotWelt.API.Services;
 using IotWelt.API.Tests.Infrastructure;
+using IotWelt.Common.Auth;
 using IotWelt.Common.Members;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -61,6 +62,10 @@ public class MembersControllerTests(ApiFactory factory)
             new InviteMemberRequest(TestData.Email(), "Reader"))).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await member.Client.DeleteAsync(
             $"/api/members/invitations/{invitation.Id}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await member.Client.PutAsJsonAsync(
+            $"/api/members/{member.UserId}/role", new ChangeMemberRoleRequest("Editor"))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await member.Client.DeleteAsync(
+            $"/api/members/{owner.UserId}")).StatusCode);
     }
 
     [Theory]
@@ -150,5 +155,95 @@ public class MembersControllerTests(ApiFactory factory)
         Assert.Equal(HttpStatusCode.NotFound, delete.StatusCode);
         var overview = await owner.Client.GetFromJsonAsync<MembersOverviewDto>("/api/members");
         Assert.Single(overview!.Invitations);
+    }
+
+    [Fact]
+    public async Task Rollenwechsel_wirkt_beim_naechsten_Refresh()
+    {
+        var owner = await factory.CreateUserAsync();
+        var member = await factory.InviteAndAcceptAsync(owner, await factory.CreateUserAsync(), "Reader");
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await member.Client.PostAsJsonAsync("/api/devices", new { name = "Vorher" })).StatusCode);
+
+        var change = await owner.Client.PutAsJsonAsync($"/api/members/{member.UserId}/role",
+            new ChangeMemberRoleRequest("Editor"));
+
+        Assert.Equal(HttpStatusCode.NoContent, change.StatusCode);
+        var overview = await owner.Client.GetFromJsonAsync<MembersOverviewDto>("/api/members");
+        Assert.Contains(overview!.Members, m => m.UserId == member.UserId && m.Role == "Editor");
+
+        var refreshed = await factory.RefreshAsync(member);
+        var me = await refreshed.Client.GetFromJsonAsync<MeResponse>("/api/auth/me");
+        Assert.Equal(owner.CustomerId, me!.CustomerId);
+        Assert.Equal("Editor", me.AccountRole);
+        Assert.Equal(HttpStatusCode.Created,
+            (await refreshed.Client.PostAsJsonAsync("/api/devices", new { name = "Nachher" })).StatusCode);
+    }
+
+    [Theory]
+    [InlineData("Owner")]
+    [InlineData("Chef")]
+    public async Task Rolle_nur_Editor_oder_Reader(string role)
+    {
+        var owner = await factory.CreateUserAsync();
+        var member = await factory.InviteAndAcceptAsync(owner, await factory.CreateUserAsync());
+
+        var change = await owner.Client.PutAsJsonAsync($"/api/members/{member.UserId}/role",
+            new ChangeMemberRoleRequest(role));
+
+        Assert.Equal(HttpStatusCode.BadRequest, change.StatusCode);
+    }
+
+    [Fact]
+    public async Task Owner_kann_sich_weder_herabstufen_noch_entfernen()
+    {
+        var owner = await factory.CreateUserAsync();
+
+        var change = await owner.Client.PutAsJsonAsync($"/api/members/{owner.UserId}/role",
+            new ChangeMemberRoleRequest("Editor"));
+        var remove = await owner.Client.DeleteAsync($"/api/members/{owner.UserId}");
+
+        foreach (var response in new[] { change, remove })
+        {
+            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+            var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+            Assert.Equal(MemberErrors.OwnerMembership, problem!.Title);
+        }
+    }
+
+    [Fact]
+    public async Task Mitglieder_fremder_Konten_sind_nicht_erreichbar()
+    {
+        var owner = await factory.CreateUserAsync();
+        var fremdOwner = await factory.CreateUserAsync();
+        var fremdMember = await factory.InviteAndAcceptAsync(fremdOwner, await factory.CreateUserAsync());
+
+        var change = await owner.Client.PutAsJsonAsync($"/api/members/{fremdMember.UserId}/role",
+            new ChangeMemberRoleRequest("Editor"));
+        var remove = await owner.Client.DeleteAsync($"/api/members/{fremdMember.UserId}");
+
+        Assert.Equal(HttpStatusCode.NotFound, change.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, remove.StatusCode);
+        var overview = await fremdOwner.Client.GetFromJsonAsync<MembersOverviewDto>("/api/members");
+        Assert.Contains(overview!.Members, m => m.UserId == fremdMember.UserId && m.Role == "Reader");
+    }
+
+    [Fact]
+    public async Task Entzogener_Zugriff_wirkt_beim_naechsten_Refresh()
+    {
+        var owner = await factory.CreateUserAsync();
+        var member = await factory.InviteAndAcceptAsync(owner, await factory.CreateUserAsync());
+
+        var remove = await owner.Client.DeleteAsync($"/api/members/{member.UserId}");
+
+        Assert.Equal(HttpStatusCode.NoContent, remove.StatusCode);
+        var overview = await owner.Client.GetFromJsonAsync<MembersOverviewDto>("/api/members");
+        Assert.DoesNotContain(overview!.Members, m => m.UserId == member.UserId);
+
+        // Nach dem Refresh landet der Login wieder in seinem eigenen Konto — das fremde ist weg
+        var refreshed = await factory.RefreshAsync(member);
+        Assert.NotEqual(owner.CustomerId, refreshed.CustomerId);
+        var accounts = await refreshed.Client.GetFromJsonAsync<List<AccountSummaryDto>>("/api/auth/accounts");
+        Assert.DoesNotContain(accounts!, a => a.CustomerId == owner.CustomerId);
     }
 }

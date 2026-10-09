@@ -74,6 +74,16 @@ public static class TestUsers
             await db.SaveChangesAsync();
         });
 
+    // Token-Refresh wie im Client: Mitgliedschaft, Rolle und Sperre werden dabei neu aus der DB gelesen
+    public static async Task<TestUser> RefreshAsync(this ApiFactory factory, TestUser user)
+    {
+        var response = await factory.CreateClient().PostAsJsonAsync("/api/auth/refresh",
+            new RefreshRequest(user.Tokens.RefreshToken));
+        response.EnsureSuccessStatusCode();
+        var tokens = (await response.Content.ReadFromJsonAsync<TokenResponse>())!;
+        return await factory.AsTestUserAsync(user.Email, tokens);
+    }
+
     // Wechselt per API in ein anderes Konto und liefert den Login im neuen Kontext
     public static async Task<TestUser> SwitchToAsync(this ApiFactory factory, TestUser user, string customerId)
     {

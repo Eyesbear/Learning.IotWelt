@@ -87,11 +87,54 @@ public class MembersController(
         return NoContent();
     }
 
+    // C2: Editor ↔ Reader. Wirkt beim nächsten Token-Refresh des Mitglieds (Rolle wird dort frisch gelesen).
+    [HttpPut("{userId}/role")]
+    public async Task<IActionResult> ChangeRole(string userId, ChangeMemberRoleRequest request)
+    {
+        if (!TryParseMemberRole(request.Role, out var role))
+        {
+            ModelState.AddModelError(nameof(request.Role), "Erlaubt sind nur Editor und Reader.");
+            return ValidationProblem(ModelState);
+        }
+
+        var membership = await FindMembershipAsync(userId);
+        if (membership is null)
+            return NotFound();
+        if (membership.Role == AccountRole.Owner)
+            return OwnerMembership();
+
+        membership.Role = role;
+        await db.SaveChangesAsync();
+        return NoContent();
+    }
+
+    // C3: Zugriff entziehen. Das Mitglied sieht das Konto spätestens nach dem nächsten Refresh nicht mehr.
+    [HttpDelete("{userId}")]
+    public async Task<IActionResult> Remove(string userId)
+    {
+        var membership = await FindMembershipAsync(userId);
+        if (membership is null)
+            return NotFound();
+        if (membership.Role == AccountRole.Owner)
+            return OwnerMembership();
+
+        db.AccountMemberships.Remove(membership);
+        await db.SaveChangesAsync();
+        return NoContent();
+    }
+
     // Nur die Rollennamen Editor/Reader (Groß-/Kleinschreibung egal) — keine Zahlen wie "1", kein Owner
     private static bool TryParseMemberRole(string? value, out AccountRole role) =>
         Enum.TryParse(value, ignoreCase: true, out role)
         && string.Equals(role.ToString(), value, StringComparison.OrdinalIgnoreCase)
         && role is AccountRole.Editor or AccountRole.Reader;
+
+    private Task<AccountMembership?> FindMembershipAsync(string userId) =>
+        db.AccountMemberships.FirstOrDefaultAsync(m => m.UserId == userId && m.Account.CustomerId == current.CustomerId);
+
+    // Der Owner bleibt Owner, bis er die Ownership überträgt (C5) — so hat jedes Konto immer genau einen
+    private ObjectResult OwnerMembership() =>
+        Problem(title: MemberErrors.OwnerMembership, statusCode: StatusCodes.Status409Conflict);
 
     private Task<Account?> ActiveAccountAsync() =>
         db.Accounts.FirstOrDefaultAsync(a => a.CustomerId == current.CustomerId);
