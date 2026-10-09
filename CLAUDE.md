@@ -77,6 +77,7 @@ betroffene Seite/Endpoint einmal real ausprobiert, `CHANGELOG.md` ergänzt.
   `{ "hardwareId": "...", "customer_id": "...", "deviceName": "...", "temperatur": 21.5, "relativeFeuchte": 45.0, "wasserAlarm": false }`
   **Achtung:** `customer_id` mit Unterstrich (`[JsonPropertyName]` in `SensorDataDto`), alle anderen Felder camelCase.
 - Gerät wird primär über `hardwareId` erkannt (Auto-Create), `customer_id`/`deviceName` sind Fallback.
+- Ein Gerät mit Besitzer wird über den Sensor-Endpoint **nie umgehängt** (nur Erstzuordnung herrenloser Geräte).
 - Der Sensor-Endpoint muss abwärtskompatibel bleiben, solange die Firmware nicht umgestellt ist.
 
 ## Konventionen
