@@ -30,6 +30,20 @@ public sealed class AuthApiClient(HttpClient http)
         return response.IsSuccessStatusCode ? new AuthResult(true) : await ReadFailureAsync(response, ct);
     }
 
+    // Die API antwortet immer mit 200 — auch für unbekannte Adressen (kein Rückschluss auf registrierte Konten)
+    public async Task<AuthResult> ForgotPasswordAsync(string email, CancellationToken ct = default)
+    {
+        var response = await http.PostAsJsonAsync("/api/auth/forgot-password", new ForgotPasswordRequest(email), ct);
+        return response.IsSuccessStatusCode ? new AuthResult(true) : await ReadFailureAsync(response, ct);
+    }
+
+    // Bei Erfolg widerruft die API alle Refresh-Tokens des Logins — auch die der Portal-Sitzungen
+    public async Task<AuthResult> ResetPasswordAsync(ResetPasswordRequest request, CancellationToken ct = default)
+    {
+        var response = await http.PostAsJsonAsync("/api/auth/reset-password", request, ct);
+        return response.IsSuccessStatusCode ? new AuthResult(true) : await ReadFailureAsync(response, ct);
+    }
+
     public async Task<AuthResult<TokenResponse>> LoginAsync(string email, string password, CancellationToken ct = default)
     {
         var response = await http.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, password), ct);
