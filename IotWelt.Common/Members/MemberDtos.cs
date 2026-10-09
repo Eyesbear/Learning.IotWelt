@@ -14,8 +14,21 @@ public record InvitationDto(int Id, string Email, string Role, DateTime CreatedA
 // B1: Role nur "Editor" oder "Reader" — Owner wird man ausschließlich per Übertragung
 public record InviteMemberRequest(string Email, string Role);
 
+// Annahmeseite (/api/invitations/{token}): Status siehe InvitationStatus.
+// HasLogin: Für die E-Mail gibt es schon einen Login → anmelden und annehmen (B3), sonst Login anlegen (B2).
+public record InvitationInfoDto(string AccountName, string Email, string Role, DateTime ExpiresAt, string Status, bool HasLogin);
+
+public static class InvitationStatus
+{
+    public const string Open = "open";
+    public const string Expired = "expired";
+    public const string Accepted = "accepted";
+}
+
 // Fehlercodes im "title" der ProblemDetails (wie AuthErrors)
 public static class MemberErrors
 {
     public const string AlreadyMember = "already_member";
+    public const string InvitationInvalid = "invitation_invalid";             // abgelaufen oder schon angenommen (410)
+    public const string InvitationEmailMismatch = "invitation_email_mismatch"; // angemeldet mit anderer E-Mail (403)
 }

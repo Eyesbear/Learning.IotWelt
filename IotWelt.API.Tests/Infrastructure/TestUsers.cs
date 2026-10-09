@@ -61,7 +61,8 @@ public static class TestUsers
         return client;
     }
 
-    // Nimmt einen Login direkt per DB in ein fremdes Konto auf — Einladungen kommen erst mit PR 1c
+    // Nimmt einen Login direkt per DB in ein fremdes Konto auf — schnelle Abkürzung für Tests,
+    // in denen es nicht um Einladungen geht. Der echte Weg: factory.InviteAndAcceptAsync (TestInvitations).
     public static Task AddMemberAsync(this ApiFactory factory, string customerId, string userId, AccountRole role) =>
         factory.WithDbAsync(async db =>
         {

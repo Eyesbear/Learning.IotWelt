@@ -16,6 +16,16 @@ public static class TestInvitations
         return (invitation, TokenFrom(factory.Emails.LastLinkFor(email)));
     }
 
+    // Echter Weg statt AddMemberAsync: einladen, als Mitglied annehmen (B3) und ins Konto wechseln
+    public static async Task<TestUser> InviteAndAcceptAsync(
+        this ApiFactory factory, TestUser owner, TestUser member, string role = "Reader")
+    {
+        var (_, token) = await factory.InviteAsync(owner, member.Email, role);
+        var accept = await member.Client.PostAsync($"/api/invitations/{token}/accept", null);
+        accept.EnsureSuccessStatusCode();
+        return await factory.SwitchToAsync(member, owner.CustomerId);
+    }
+
     public static string TokenFrom(string link) =>
         QueryHelpers.ParseQuery(new Uri(link).Query)["token"].ToString();
 }

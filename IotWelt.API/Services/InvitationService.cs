@@ -44,4 +44,35 @@ public class InvitationService(
         await email.SendInvitationLinkAsync(normalized, account.Name, role, link);
         return invitation;
     }
+
+    public Task<AccountInvitation?> FindByTokenAsync(string token)
+    {
+        var hash = SecureToken.Hash(token);
+        return db.AccountInvitations
+            .Include(i => i.Account)
+            .FirstOrDefaultAsync(i => i.TokenHash == hash);
+    }
+
+    // B2/B3: Einladung einlösen und Mitgliedschaft vormerken (gespeichert wird mit dem nächsten SaveChanges).
+    // Das Einlösen selbst ist ein bedingtes UPDATE direkt in der DB: Nur wer die Zeile mit
+    // AcceptedAt = NULL erwischt, gewinnt. Zwei gleichzeitige Annahmen können so nicht beide durchgehen.
+    // Läuft in der Transaktion des Aufrufers — scheitert danach etwas, wird das Einlösen zurückgerollt.
+    public async Task<bool> TryClaimAsync(AccountInvitation invitation, AppUser user)
+    {
+        var now = time.GetUtcNow().UtcDateTime;
+        var claimed = await db.AccountInvitations
+            .Where(i => i.Id == invitation.Id && i.AcceptedAt == null && i.ExpiresAt > now)
+            .ExecuteUpdateAsync(s => s.SetProperty(i => i.AcceptedAt, now));
+        if (claimed == 0)
+            return false;
+
+        db.AccountMemberships.Add(new AccountMembership
+        {
+            AccountId = invitation.AccountId,
+            User = user,
+            Role = invitation.Role,
+            JoinedAt = now
+        });
+        return true;
+    }
 }
