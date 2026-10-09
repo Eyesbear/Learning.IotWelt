@@ -1,6 +1,4 @@
 using System.Security.Claims;
-using System.Security.Cryptography;
-using System.Text;
 using IotWelt.API.Data;
 using IotWelt.API.Models;
 using IotWelt.Common.Auth;
@@ -56,12 +54,12 @@ public class TokenService(
                 new SymmetricSecurityKey(_jwt.GetKeyBytes()), SecurityAlgorithms.HmacSha256)
         });
 
-        var refreshToken = NewRefreshToken();
+        var refreshToken = SecureToken.New();
         var refreshExpires = now.AddDays(_jwt.RefreshTokenDays);
         db.RefreshTokens.Add(new RefreshToken
         {
             UserId = user.Id,
-            TokenHash = Hash(refreshToken),
+            TokenHash = SecureToken.Hash(refreshToken),
             AccountId = membership?.AccountId,
             CreatedAt = now,
             ExpiresAt = refreshExpires
@@ -80,7 +78,7 @@ public class TokenService(
     public async Task<TokenResponse?> RefreshAsync(string refreshToken, int? preferredAccountId = null)
     {
         var now = time.GetUtcNow().UtcDateTime;
-        var hash = Hash(refreshToken);
+        var hash = SecureToken.Hash(refreshToken);
         var stored = await db.RefreshTokens
             .Include(t => t.User)
             .FirstOrDefaultAsync(t => t.TokenHash == hash);
@@ -110,14 +108,14 @@ public class TokenService(
         // Altes Token verbrauchen — wird zusammen mit dem neuen Token in IssueAsync gespeichert
         stored.RevokedAt = now;
         var issued = await IssueAsync(stored.User, membership);
-        stored.ReplacedByHash = Hash(issued.RefreshToken);
+        stored.ReplacedByHash = SecureToken.Hash(issued.RefreshToken);
         await db.SaveChangesAsync();
         return issued;
     }
 
     public async Task RevokeAsync(string refreshToken)
     {
-        var hash = Hash(refreshToken);
+        var hash = SecureToken.Hash(refreshToken);
         var stored = await db.RefreshTokens.FirstOrDefaultAsync(t => t.TokenHash == hash);
         if (stored is { RevokedAt: null })
         {
@@ -134,11 +132,4 @@ public class TokenService(
             .Where(t => t.UserId == userId && t.RevokedAt == null)
             .ExecuteUpdateAsync(s => s.SetProperty(t => t.RevokedAt, now));
     }
-
-    // 64 zufällige Bytes, URL-sicher kodiert — das Token selbst verlässt die API nur einmal
-    private static string NewRefreshToken() =>
-        Base64UrlEncoder.Encode(RandomNumberGenerator.GetBytes(64));
-
-    private static string Hash(string token) =>
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
 }

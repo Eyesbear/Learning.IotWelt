@@ -51,6 +51,22 @@ public class AccountService(AppDbContext db, TimeProvider time)
             .OrderBy(m => m.JoinedAt)
             .ToListAsync();
 
+    // C4: Konten samt Geräten löschen. Per Cascade verschwinden Messwerte (am Gerät),
+    // Mitgliedschaften und Einladungen (am Konto). Geräte hängen nur über die CustomerId
+    // (Text, kein Fremdschlüssel — ESP32-Altbestand) am Konto und werden deshalb explizit gelöscht.
+    // Ein SaveChanges = eine Transaktion: entweder ist alles weg oder nichts.
+    public async Task DeleteAsync(IReadOnlyCollection<Account> accounts)
+    {
+        var customerIds = accounts.Select(a => a.CustomerId).ToList();
+        var devices = await db.Devices
+            .Where(d => d.CustomerId != null && customerIds.Contains(d.CustomerId))
+            .ToListAsync();
+
+        db.Devices.RemoveRange(devices);
+        db.Accounts.RemoveRange(accounts);
+        await db.SaveChangesAsync();
+    }
+
     private async Task<string> NewCustomerIdAsync()
     {
         // 36^16 Möglichkeiten — Kollision praktisch ausgeschlossen, aber der eindeutige Index ist das Sicherheitsnetz
