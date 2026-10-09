@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using IotWelt.API.Models;
 using IotWelt.API.Tests.Infrastructure;
 using IotWelt.Common.Auth;
+using IotWelt.Common.Members;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 
@@ -235,5 +236,64 @@ public class AuthControllerTests(ApiFactory factory)
 
         await AssertAuthErrorAsync(await RefreshAsync(zweitesGeraet.Tokens.RefreshToken), AuthErrors.InvalidRefreshToken);
         Assert.Equal(HttpStatusCode.OK, (await RefreshAsync(neu.RefreshToken)).StatusCode);
+    }
+
+    private static HttpRequestMessage DeleteMe(string password) =>
+        new(HttpMethod.Delete, "/api/auth/me") { Content = JsonContent.Create(new DeleteLoginRequest(password)) };
+
+    [Fact]
+    public async Task Mitglied_ohne_eigenes_Konto_loescht_seinen_Login()
+    {
+        var owner = await factory.CreateUserAsync();
+        var email = TestData.Email();
+        var (_, token) = await factory.InviteAsync(owner, email);
+        var register = await _anonymous.PostAsJsonAsync($"/api/invitations/{token}/register",
+            new RegisterFromInvitationRequest(TestData.Password, null));
+        var member = await factory.AsTestUserAsync(email, (await register.Content.ReadFromJsonAsync<TokenResponse>())!);
+
+        var delete = await member.Client.SendAsync(DeleteMe(TestData.Password));
+
+        Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
+        await AssertAuthErrorAsync(await LoginAsync(email), AuthErrors.InvalidCredentials);
+        await AssertAuthErrorAsync(await RefreshAsync(member.Tokens.RefreshToken), AuthErrors.InvalidRefreshToken);
+        var overview = await owner.Client.GetFromJsonAsync<MembersOverviewDto>("/api/members");
+        Assert.DoesNotContain(overview!.Members, m => m.UserId == member.UserId);
+    }
+
+    [Fact]
+    public async Task Owner_kann_seinen_Login_nicht_loeschen()
+    {
+        var user = await factory.CreateUserAsync();
+
+        var delete = await user.Client.SendAsync(DeleteMe(TestData.Password));
+
+        Assert.Equal(HttpStatusCode.Conflict, delete.StatusCode);
+        var problem = await delete.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.Equal(DeleteLoginErrors.OwnsAccounts, problem!.Title);
+        Assert.Equal(HttpStatusCode.OK, (await LoginAsync(user.Email)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Nach_dem_Loeschen_des_Kontos_kann_der_Login_geloescht_werden()
+    {
+        var user = await factory.CreateUserAsync();
+        await user.Client.DeleteAsync("/api/members/account");
+
+        var delete = await user.Client.SendAsync(DeleteMe(TestData.Password));
+
+        Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
+        await AssertAuthErrorAsync(await LoginAsync(user.Email), AuthErrors.InvalidCredentials);
+    }
+
+    [Fact]
+    public async Task Login_loeschen_mit_falschem_Passwort_wird_abgewiesen()
+    {
+        var user = await factory.CreateUserAsync();
+        await user.Client.DeleteAsync("/api/members/account");
+
+        var delete = await user.Client.SendAsync(DeleteMe("Falsches-Passwort1"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, delete.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await LoginAsync(user.Email)).StatusCode);
     }
 }
