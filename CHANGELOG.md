@@ -16,7 +16,7 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 - **Portal meldet sich an der eigenen API an** (Cookie statt Entra ID): Login, Logout, „Angemeldet bleiben“; im Cookie steht nur eine Sitzungs-ID, Access- und Refresh-Token bleiben serverseitig im Portal und werden vor Ablauf automatisch erneuert (pro Sitzung serialisiert, damit kein Refresh-Token doppelt verwendet wird)
 - Portal-Seiten für **Registrierung mit E-Mail-Bestätigung** und **Passwort vergessen/zurücksetzen** (`/account/...`); Identity-Fehler der API erscheinen auf Deutsch
 - **Kontowechsler** im Kopfbereich des Portals, sichtbar bei Logins mit mehreren Konten
-- Abgelaufene oder widerrufene Anmeldung führt in Dashboard, Geräten, Gerätedetail und Profil zurück zum Login (mit Rücksprung auf die Seite)
+- Abgelaufene oder widerrufene Anmeldung führt in Dashboard, Geräten, Gerätedetail, Klimaverlauf, Profil und den Admin-Seiten zurück zum Login (mit Rücksprung auf die Seite)
 - **Einladungen** (Stories B1–B3): Owner lädt per E-Mail als Editor/Reader ein (`POST /api/members/invitations`), Link 7 Tage gültig und nur einmal nutzbar, Token nur als SHA-256-Hash gespeichert. Annahme mit vorhandenem Login (`POST /api/invitations/{token}/accept`, E-Mail muss passen) oder mit neuem Login ohne eigenes Konto (`POST /api/invitations/{token}/register`, liefert direkt ein Token-Paar)
 - **Mitgliederverwaltung** für Owner (`/api/members`, Stories C1–C5): Mitglieder und offene Einladungen anzeigen, Rolle ändern, Mitglied entfernen, Ownership übertragen, Konto löschen (mit Geräten, Messwerten, Mitgliedschaften, Einladungen)
 - **Eigenen Login löschen** (`DELETE /api/auth/me`, Story A4) mit Passwortbestätigung; abgelehnt, solange der Login Owner eines Kontos ist
@@ -46,6 +46,7 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 - Entra-ID-Validierung in der API (`Microsoft.Identity.Web`, Section `AzureAd`)
 
 ### Fixed
+- Portal: Ein Fehler beim Laden des Klimaverlaufs (API nicht erreichbar, Sitzung abgelaufen) beendete den ganzen Circuit; jetzt erscheint ein Hinweis bzw. der Login
 - Admin-Geräteliste: Besitzerabfrage war von EF Core nicht übersetzbar (Filter nach der Projektion in einen Record)
 
 ### Security

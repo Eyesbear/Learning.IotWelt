@@ -4,7 +4,9 @@
 
 @inject IotWeltApiClient Api
 @inject IJSRuntime JS
+@inject NavigationManager Navigation
 @using IotWelt.Common
+@using MyOit.Portal.Services.Auth
 
 <PageTitle>Geräteverwaltung</PageTitle>
 
@@ -123,6 +125,11 @@
             devices = result.Items;
             totalCount = result.TotalCount;
         }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            // Sitzung abgelaufen oder widerrufen → neu anmelden
+            Navigation.NavigateToLogin();
+        }
         catch (Exception ex)
         {
             errorMessage = ex.Message;
@@ -163,6 +170,11 @@
                     CustomerId = editCustomerId
                 };
         }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            // Sitzung abgelaufen oder widerrufen → neu anmelden
+            Navigation.NavigateToLogin();
+        }
         catch (Exception ex)
         {
             errorMessage = ex.Message;
@@ -179,6 +191,11 @@
         {
             await Api.AdminDeleteDeviceAsync(d.Id);
             await ReloadAsync();
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            // Sitzung abgelaufen oder widerrufen → neu anmelden
+            Navigation.NavigateToLogin();
         }
         catch (Exception ex)
         {

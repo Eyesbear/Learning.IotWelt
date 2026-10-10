@@ -1,4 +1,8 @@
 @inject IotWeltApiClient Api
+@inject NavigationManager Navigation
+@inject ILogger<KlimaVerlauf> Logger
+@using System.Net
+@using MyOit.Portal.Services.Auth
 
 <div class="mb-3 d-flex align-items-center gap-3">
     <label class="form-label mb-0">Zeitraum:</label>
@@ -15,7 +19,11 @@
     </select>
 </div>
 
-@if (verlauf == null)
+@if (loadError is not null)
+{
+    <div class="alert alert-warning">@loadError</div>
+}
+else if (verlauf == null)
 {
     <p class="text-muted">Lade Verlaufsdaten...</p>
 }
@@ -67,6 +75,7 @@ else
     private string SelectedKey { get; set; } = "m:60";
     private string categoryFormat = "{0:HH:mm}";
     private List<VerlaufViewModel>? verlauf;
+    private string? loadError;
 
     protected override async Task OnParametersSetAsync()
         => await Laden();
@@ -80,9 +89,27 @@ else
     private async Task Laden()
     {
         var isRange = SelectedKey.StartsWith("r:");
-        var raw = isRange
-            ? await Api.GetKlimaVerlaufAsync(DeviceId, range: SelectedKey[2..])
-            : await Api.GetKlimaVerlaufAsync(DeviceId, minutes: int.Parse(SelectedKey[2..]));
+        List<KlimaVerlaufPunkt> raw;
+        try
+        {
+            raw = isRange
+                ? await Api.GetKlimaVerlaufAsync(DeviceId, range: SelectedKey[2..])
+                : await Api.GetKlimaVerlaufAsync(DeviceId, minutes: int.Parse(SelectedKey[2..]));
+            loadError = null;
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            // Sitzung abgelaufen oder widerrufen → neu anmelden
+            Navigation.NavigateToLogin();
+            return;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            // Ohne Fang würde der Fehler den ganzen Circuit beenden — so bleibt die Gerätedetailseite benutzbar
+            Logger.LogWarning(ex, "Verlauf für Gerät {DeviceId} nicht ladbar", DeviceId);
+            loadError = "Die Verlaufsdaten konnten gerade nicht geladen werden.";
+            return;
+        }
 
         // Bei tagesübergreifenden Zeiträumen Datum in der Achse mit anzeigen
         var showDate = SelectedKey is "m:720" or "m:1440" or "r:yesterday" or "r:7days";

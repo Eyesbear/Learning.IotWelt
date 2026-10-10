@@ -26,7 +26,6 @@ Erledigte Punkte werden gestrichen und im CHANGELOG erwähnt.
 
 - **Logins ohne Konto** *(gefunden in 1e)* — Dashboard, Geräte und Profil setzen ein aktives Konto voraus.
   Braucht eine Hinweisseite („Sie gehören keinem Konto an“) und den API-Endpoint oben.
-- **Admin-Geräteseite und KlimaVerlauf leiten bei 401 nicht zum Login** *(aus 1d, geplant in 1e; Benutzerverwaltung erledigt)*.
 - **Kein Portal-Testprojekt** *(aus 1d)* — z. B. bUnit für Komponenten, `WebApplicationFactory` für die
   Formular-Endpoints (CSRF-Schutz wurde bisher nur manuell geprüft).
 
