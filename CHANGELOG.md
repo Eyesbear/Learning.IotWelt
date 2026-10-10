@@ -9,6 +9,7 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 ## [Unreleased] — v2.0 im Umbau
 
 ### Added
+- **Passwort ändern** im Portal-Profil (Story A3): Die aktuelle Sitzung bleibt angemeldet und bekommt neue Tokens, alle anderen Sitzungen des Logins werden beendet; der Tausch läuft unter der Sitzungssperre, damit kein paralleler Refresh das widerrufene Token vorlegt
 - Portal-Seite **Konto und Login löschen** (`/account/delete`): eigenes aktives Konto mit Bestätigung löschen (C4), danach den Login mit Passwortbestätigung (A4); weitere eigene Konten werden aufgelistet. Nach dem Löschen eines Kontos wird die Sitzung sofort erneuert, damit Token und Cookie nicht mehr auf das gelöschte Konto zeigen
 - **Portal meldet sich an der eigenen API an** (Cookie statt Entra ID): Login, Logout, „Angemeldet bleiben“; im Cookie steht nur eine Sitzungs-ID, Access- und Refresh-Token bleiben serverseitig im Portal und werden vor Ablauf automatisch erneuert (pro Sitzung serialisiert, damit kein Refresh-Token doppelt verwendet wird)
 - Portal-Seiten für **Registrierung mit E-Mail-Bestätigung** und **Passwort vergessen/zurücksetzen** (`/account/...`); Identity-Fehler der API erscheinen auf Deutsch

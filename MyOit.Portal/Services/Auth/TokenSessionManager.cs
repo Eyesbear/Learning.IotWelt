@@ -105,6 +105,56 @@ public sealed class TokenSessionManager(
             return (AccountSwitchStatus.SessionEnded, null);
         });
 
+    // Passwortänderung: Die API widerruft dabei ALLE Refresh-Tokens des Logins, auch das dieser Sitzung,
+    // und liefert ein neues Paar. Unter der Sperre, damit kein paralleler Refresh das alte Token vorlegt.
+    // Die Sitzungs-ID bleibt gleich, das Cookie muss nicht erneuert werden.
+    // null = Sitzung beendet → neu anmelden; sonst das Ergebnis der API (Fehler: Tokens unverändert).
+    public Task<AuthResult?> ChangePasswordAsync(string sessionId, ChangePasswordRequest request) =>
+        WithSessionLockAsync<AuthResult?>(sessionId, CancellationToken.None, async () =>
+        {
+            var tokens = await store.GetAsync(sessionId);
+            if (tokens is null)
+                return null;
+
+            if (NeedsRefresh(tokens))
+            {
+                if (await RefreshAsync(sessionId, tokens.RefreshToken) is null)
+                    return null;
+                tokens = (await store.GetAsync(sessionId))!;
+            }
+
+            AuthResult<TokenResponse> result;
+            try
+            {
+                using var scope = scopeFactory.CreateScope();
+                var authApi = scope.ServiceProvider.GetRequiredService<AuthApiClient>();
+                // Kein CancellationToken des Aufrufers — Begründung wie in RefreshAsync
+                result = await authApi.ChangePasswordAsync(tokens.AccessToken, request, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                // Ob das Passwort geändert und unser Token widerrufen ist, ist unklar → Sitzung beenden
+                logger.LogWarning(ex, "Passwortänderung fehlgeschlagen, Portal-Sitzung wird beendet");
+                await ForgetSessionAsync(sessionId);
+                return null;
+            }
+
+            if (result.Succeeded)
+            {
+                await store.SetAsync(sessionId, result.Value!);
+                return result;
+            }
+
+            // 400 (ValidationProblem mit Fehlerliste): falsches Passwort oder Regeln verletzt — nichts widerrufen.
+            // Sonst 401: Login gelöscht oder Token ungültig.
+            if (result.Errors is { Count: > 0 })
+                return result;
+
+            logger.LogInformation("Passwortänderung abgelehnt ({ErrorCode}), Portal-Sitzung wird beendet", result.ErrorCode);
+            await ForgetSessionAsync(sessionId);
+            return null;
+        });
+
     // Sofort erneuern, auch wenn das Access-Token noch gültig ist — z. B. nachdem das aktive Konto gelöscht
     // wurde: Das alte Token nennt noch dieses Konto, beim Refresh wählt die API ein verbliebenes (oder keins).
     // null = Sitzung beendet → neu anmelden.

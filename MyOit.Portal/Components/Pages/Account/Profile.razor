@@ -6,7 +6,11 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
+@inject TokenSessionManager Sessions
+@inject ILogger<Profile> Logger
+@using System.ComponentModel.DataAnnotations
 @using System.Security.Claims
+@using IotWelt.Common.Auth
 @using MyOit.Portal.Services.Auth
 
 <PageTitle>Mein Profil</PageTitle>
@@ -61,6 +65,52 @@
             </div>
         </div>
 
+        <div class="card mb-3">
+            <div class="card-body">
+                <h5 class="card-title">Passwort ändern</h5>
+
+                @if (passwordChanged)
+                {
+                    <div class="alert alert-success">
+                        Ihr Passwort wurde geändert. Auf allen anderen Geräten sind Sie jetzt abgemeldet.
+                    </div>
+                }
+                @if (passwordErrors is not null)
+                {
+                    <div class="alert alert-danger">
+                        @foreach (var error in passwordErrors)
+                        {
+                            <div>@error</div>
+                        }
+                    </div>
+                }
+
+                <EditForm Model="passwordInput" OnValidSubmit="ChangePasswordAsync" FormName="change-password">
+                    <DataAnnotationsValidator />
+                    <div class="mb-3">
+                        <label for="currentPassword" class="form-label">Bisheriges Passwort</label>
+                        <InputText id="currentPassword" type="password" @bind-Value="passwordInput.CurrentPassword" class="form-control" autocomplete="current-password" />
+                        <ValidationMessage For="() => passwordInput.CurrentPassword" class="text-danger small" />
+                    </div>
+                    <div class="mb-3">
+                        <label for="newPassword" class="form-label">Neues Passwort</label>
+                        <InputText id="newPassword" type="password" @bind-Value="passwordInput.NewPassword" class="form-control" autocomplete="new-password" />
+                        @* Spiegelt die Identity-Optionen der API (IotWelt.API/Program.cs) *@
+                        <div class="form-text">Mindestens 8 Zeichen, mit Groß- und Kleinbuchstaben und einer Ziffer.</div>
+                        <ValidationMessage For="() => passwordInput.NewPassword" class="text-danger small" />
+                    </div>
+                    <div class="mb-3">
+                        <label for="confirmNewPassword" class="form-label">Neues Passwort wiederholen</label>
+                        <InputText id="confirmNewPassword" type="password" @bind-Value="passwordInput.ConfirmNewPassword" class="form-control" autocomplete="new-password" />
+                        <ValidationMessage For="() => passwordInput.ConfirmNewPassword" class="text-danger small" />
+                    </div>
+                    <button type="submit" class="btn btn-primary" disabled="@isChangingPassword">
+                        @(isChangingPassword ? "Wird geändert…" : "Passwort ändern")
+                    </button>
+                </EditForm>
+            </div>
+        </div>
+
         <div class="card">
             <div class="card-body">
                 <h5 class="card-title">Konto verwalten</h5>
@@ -73,10 +123,6 @@
                         Konto löschen
                     </a>
                 </div>
-                <p class="text-muted small mt-3 mb-0">
-                    <strong>Passwort ändern:</strong> Melden Sie sich ab und wählen Sie auf der Anmeldeseite
-                    „Passwort vergessen".
-                </p>
             </div>
         </div>
     }
@@ -89,11 +135,17 @@
     private string? customerId;
     private string? loadError;
     private bool copied;
+    private string? sessionId;
+    private ChangePasswordInput passwordInput = new();
+    private bool isChangingPassword;
+    private bool passwordChanged;
+    private IReadOnlyList<string>? passwordErrors;
 
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         var user = authState.User;
+        sessionId = user.FindFirst(PortalClaims.SessionId)?.Value;
 
         // Claims aus dem Portal-Cookie (PortalClaims.CreatePrincipal): Anzeigename, sonst E-Mail
         userName = user.Identity?.Name;
@@ -117,6 +169,52 @@
         isLoading = false;
     }
 
+    // Läuft im Circuit: Die Sitzungs-ID bleibt gleich, nur die Tokens im Store werden getauscht —
+    // dafür braucht es kein neues Cookie (anders als beim Kontowechsel)
+    private async Task ChangePasswordAsync()
+    {
+        if (sessionId is null)
+        {
+            Navigation.NavigateToLogin();
+            return;
+        }
+
+        isChangingPassword = true;
+        passwordChanged = false;
+        passwordErrors = null;
+        try
+        {
+            var request = new ChangePasswordRequest(passwordInput.CurrentPassword, passwordInput.NewPassword);
+            var result = await Sessions.ChangePasswordAsync(sessionId, request);
+            if (result is null)
+            {
+                // Sitzung beendet (abgelaufen, widerrufen oder Ausgang unklar) → neu anmelden
+                Navigation.NavigateToLogin();
+                return;
+            }
+
+            if (result.Succeeded)
+            {
+                passwordChanged = true;
+                passwordInput = new();
+            }
+            else
+            {
+                passwordErrors = result.Errors;
+            }
+        }
+        catch (Exception ex)
+        {
+            // Nur Unerwartetes — API-Störungen fängt der TokenSessionManager selbst ab (→ null)
+            Logger.LogWarning(ex, "Passwortänderung fehlgeschlagen");
+            passwordErrors = ["Das Passwort konnte gerade nicht geändert werden. Bitte versuchen Sie es später erneut."];
+        }
+        finally
+        {
+            isChangingPassword = false;
+        }
+    }
+
     private async Task CopyCustomerId()
     {
         if (customerId is null) return;
@@ -126,5 +224,18 @@
         await Task.Delay(2000);
         copied = false;
         StateHasChanged();
+    }
+
+    private sealed class ChangePasswordInput
+    {
+        [Required(ErrorMessage = "Bitte das bisherige Passwort angeben.")]
+        public string CurrentPassword { get; set; } = "";
+
+        [Required(ErrorMessage = "Bitte ein neues Passwort angeben.")]
+        public string NewPassword { get; set; } = "";
+
+        [Required(ErrorMessage = "Bitte das neue Passwort wiederholen.")]
+        [Compare(nameof(NewPassword), ErrorMessage = "Die Passwörter stimmen nicht überein.")]
+        public string ConfirmNewPassword { get; set; } = "";
     }
 }

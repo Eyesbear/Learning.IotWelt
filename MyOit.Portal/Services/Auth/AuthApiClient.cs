@@ -80,6 +80,20 @@ public sealed class AuthApiClient(HttpClient http)
         return await ReadTokenResultAsync(response, ct);
     }
 
+    // Widerruft bei Erfolg alle Refresh-Tokens des Logins und liefert ein neues Paar für diese Sitzung —
+    // nur unter der Sitzungssperre aufrufen (TokenSessionManager). 400 = bisheriges Passwort falsch oder Regeln verletzt.
+    public async Task<AuthResult<TokenResponse>> ChangePasswordAsync(
+        string accessToken, ChangePasswordRequest changeRequest, CancellationToken ct = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth/change-password")
+        {
+            Content = JsonContent.Create(changeRequest),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        var response = await http.SendAsync(request, ct);
+        return await ReadTokenResultAsync(response, ct);
+    }
+
     public async Task<MeResponse> GetMeAsync(string accessToken, CancellationToken ct = default)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, "/api/auth/me");
