@@ -5,7 +5,7 @@ namespace IotWelt.API.Services;
 
 // Platzhalter bis Phase 4 (SMTP bei myASP.NET): schreibt die Links ins Log statt sie zu versenden.
 // Lokal im Aspire-Dashboard unter "Console logs" bzw. "Structured logs" der API zu finden.
-public class LoggingEmailSender(ILogger<LoggingEmailSender> logger) : IEmailSender<AppUser>
+public class LoggingEmailSender(ILogger<LoggingEmailSender> logger) : IEmailSender<AppUser>, IInvitationEmailSender
 {
     public Task SendConfirmationLinkAsync(AppUser user, string email, string confirmationLink)
     {
@@ -22,6 +22,13 @@ public class LoggingEmailSender(ILogger<LoggingEmailSender> logger) : IEmailSend
     public Task SendPasswordResetCodeAsync(AppUser user, string email, string resetCode)
     {
         logger.LogInformation("E-Mail an {Email} — Code zum Zurücksetzen: {Code}", email, resetCode);
+        return Task.CompletedTask;
+    }
+
+    public Task SendInvitationLinkAsync(string email, string accountName, AccountRole role, string invitationLink)
+    {
+        logger.LogInformation("E-Mail an {Email} — Einladung in Konto {Account} als {Role}: {Link}",
+            email, accountName, role, invitationLink);
         return Task.CompletedTask;
     }
 }

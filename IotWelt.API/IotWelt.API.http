@@ -4,3 +4,101 @@ GET {{IotWelt.API_HostAddress}}/weatherforecast/
 Accept: application/json
 
 ###
+
+# ── Mitglieder und Einladungen (PR 1c) ───────────────────────────────────────
+# Werte nach dem Login per Hand eintragen:
+#   accessToken     → "accessToken" aus POST /api/auth/login (als Owner bzw. Admin)
+#   invitationToken → Teil nach "?token=" aus dem Einladungslink im API-Log (Aspire → Console logs)
+#   userId          → aus GET /api/members bzw. GET /api/admin/logins
+@accessToken = hier-einfuegen
+@invitationToken = hier-einfuegen
+@userId = hier-einfuegen
+
+### Anmelden (liefert accessToken + refreshToken)
+POST {{IotWelt.API_HostAddress}}/api/auth/login
+Content-Type: application/json
+
+{ "email": "owner@example.com", "password": "Passwort1!" }
+
+### C1: Mitglieder und offene Einladungen des aktiven Kontos
+GET {{IotWelt.API_HostAddress}}/api/members
+Authorization: Bearer {{accessToken}}
+
+### B1: einladen (Role: Editor oder Reader)
+POST {{IotWelt.API_HostAddress}}/api/members/invitations
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "email": "gast@example.com", "role": "Reader" }
+
+### B1: Einladung zurückziehen (Id aus GET /api/members)
+DELETE {{IotWelt.API_HostAddress}}/api/members/invitations/1
+Authorization: Bearer {{accessToken}}
+
+### Annahmeseite: Infos zur Einladung (ohne Anmeldung)
+GET {{IotWelt.API_HostAddress}}/api/invitations/{{invitationToken}}
+
+### B3: mit vorhandenem Login annehmen (accessToken des Eingeladenen)
+POST {{IotWelt.API_HostAddress}}/api/invitations/{{invitationToken}}/accept
+Authorization: Bearer {{accessToken}}
+
+### B2: neuen Login über die Einladung anlegen (liefert Token-Paar)
+POST {{IotWelt.API_HostAddress}}/api/invitations/{{invitationToken}}/register
+Content-Type: application/json
+
+{ "password": "Passwort1!", "displayName": "Gast" }
+
+### C2: Rolle ändern
+PUT {{IotWelt.API_HostAddress}}/api/members/{{userId}}/role
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "role": "Editor" }
+
+### C3: Mitglied entfernen
+DELETE {{IotWelt.API_HostAddress}}/api/members/{{userId}}
+Authorization: Bearer {{accessToken}}
+
+### C5: Ownership übertragen (danach als alter Owner refreshen)
+POST {{IotWelt.API_HostAddress}}/api/members/transfer-ownership
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "userId": "{{userId}}" }
+
+### C4: aktives Konto löschen — ACHTUNG: Geräte und Messwerte sind weg
+DELETE {{IotWelt.API_HostAddress}}/api/members/account
+Authorization: Bearer {{accessToken}}
+
+### A4: eigenen Login löschen (nur wenn nicht Owner eines Kontos)
+DELETE {{IotWelt.API_HostAddress}}/api/auth/me
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "password": "Passwort1!" }
+
+# ── Login-Verwaltung für System-Admins ───────────────────────────────────────
+
+### E1: alle Logins mit Konten und Rollen
+GET {{IotWelt.API_HostAddress}}/api/admin/logins
+Authorization: Bearer {{accessToken}}
+
+### E2: sperren / entsperren
+POST {{IotWelt.API_HostAddress}}/api/admin/logins/{{userId}}/lock
+Authorization: Bearer {{accessToken}}
+
+###
+POST {{IotWelt.API_HostAddress}}/api/admin/logins/{{userId}}/unlock
+Authorization: Bearer {{accessToken}}
+
+### E3: Admin-Rolle vergeben / entziehen
+PUT {{IotWelt.API_HostAddress}}/api/admin/logins/{{userId}}/admin
+Authorization: Bearer {{accessToken}}
+
+###
+DELETE {{IotWelt.API_HostAddress}}/api/admin/logins/{{userId}}/admin
+Authorization: Bearer {{accessToken}}
+
+### Login löschen (nicht Owner eines Kontos, nicht man selbst)
+DELETE {{IotWelt.API_HostAddress}}/api/admin/logins/{{userId}}
+Authorization: Bearer {{accessToken}}

@@ -18,6 +18,9 @@ public record ResetPasswordRequest(string Email, string Code, string NewPassword
 
 public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 
+// A4: eigenen Login löschen — Passwort als Bestätigung, damit ein abgegriffenes Access-Token nicht reicht
+public record DeleteLoginRequest(string Password);
+
 // Access-Token (kurzlebig, JWT) + Refresh-Token (langlebig, opak, nur einmal verwendbar)
 public record TokenResponse(
     string AccessToken,
@@ -43,4 +46,11 @@ public static class AuthErrors
     public const string LockedOut = "locked_out";
     public const string EmailNotConfirmed = "email_not_confirmed";
     public const string InvalidRefreshToken = "invalid_refresh_token";
+}
+
+// Fehlercodes im "title" der ProblemDetails bei 409 auf DELETE /me
+public static class DeleteLoginErrors
+{
+    // Login ist Owner mindestens eines Kontos — erst Konto löschen oder Ownership übertragen
+    public const string OwnsAccounts = "owns_accounts";
 }

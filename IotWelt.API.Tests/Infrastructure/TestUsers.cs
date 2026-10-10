@@ -61,7 +61,8 @@ public static class TestUsers
         return client;
     }
 
-    // Nimmt einen Login direkt per DB in ein fremdes Konto auf — Einladungen kommen erst mit PR 1c
+    // Nimmt einen Login direkt per DB in ein fremdes Konto auf — schnelle Abkürzung für Tests,
+    // in denen es nicht um Einladungen geht. Der echte Weg: factory.InviteAndAcceptAsync (TestInvitations).
     public static Task AddMemberAsync(this ApiFactory factory, string customerId, string userId, AccountRole role) =>
         factory.WithDbAsync(async db =>
         {
@@ -72,6 +73,16 @@ public static class TestUsers
             });
             await db.SaveChangesAsync();
         });
+
+    // Token-Refresh wie im Client: Mitgliedschaft, Rolle und Sperre werden dabei neu aus der DB gelesen
+    public static async Task<TestUser> RefreshAsync(this ApiFactory factory, TestUser user)
+    {
+        var response = await factory.CreateClient().PostAsJsonAsync("/api/auth/refresh",
+            new RefreshRequest(user.Tokens.RefreshToken));
+        response.EnsureSuccessStatusCode();
+        var tokens = (await response.Content.ReadFromJsonAsync<TokenResponse>())!;
+        return await factory.AsTestUserAsync(user.Email, tokens);
+    }
 
     // Wechselt per API in ein anderes Konto und liefert den Login im neuen Kontext
     public static async Task<TestUser> SwitchToAsync(this ApiFactory factory, TestUser user, string customerId)

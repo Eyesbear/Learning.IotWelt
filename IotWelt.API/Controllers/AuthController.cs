@@ -202,6 +202,29 @@ public class AuthController(
         return await tokens.IssueAsync(user, membership);
     }
 
+    // A4: eigenen Login löschen. Abgelehnt, solange der Login Owner eines Kontos ist (C4/C5 zuerst).
+    // Mitgliedschaften in fremden Konten und Refresh-Tokens verschwinden per Cascade mit dem Login.
+    [Authorize]
+    [HttpDelete("me")]
+    public async Task<IActionResult> DeleteMe(DeleteLoginRequest request)
+    {
+        var user = await users.FindByIdAsync(current.UserId!);
+        if (user is null)
+            return Unauthorized();
+
+        if (!await users.CheckPasswordAsync(user, request.Password))
+        {
+            ModelState.AddModelError(nameof(request.Password), "Das Passwort ist falsch.");
+            return ValidationProblem(ModelState);
+        }
+
+        if (await db.AccountMemberships.AnyAsync(m => m.UserId == user.Id && m.Role == AccountRole.Owner))
+            return Problem(title: DeleteLoginErrors.OwnsAccounts, statusCode: StatusCodes.Status409Conflict);
+
+        var result = await users.DeleteAsync(user);
+        return result.Succeeded ? NoContent() : IdentityProblem(result);
+    }
+
     private async Task SendConfirmationAsync(AppUser user)
     {
         var code = EncodeCode(await users.GenerateEmailConfirmationTokenAsync(user));

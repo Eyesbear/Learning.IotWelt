@@ -11,7 +11,7 @@ namespace IotWelt.API.Controllers;
 [Authorize(Roles = Policies.AdminRole)]
 [ApiController]
 [Route("api/admin")]
-public class AdminController(AppDbContext db) : ControllerBase
+public class AdminController(AppDbContext db, AccountService accountService) : ControllerBase
 {
     [HttpGet("devices")]
     public async Task<ActionResult<PagedResult<AdminDeviceDto>>> GetDevices(
@@ -102,15 +102,7 @@ public class AdminController(AppDbContext db) : ControllerBase
         if (accounts.Count == 0)
             return NotFound();
 
-        var customerIds = accounts.Select(a => a.CustomerId).ToList();
-        var devices = await db.Devices
-            .Where(d => d.CustomerId != null && customerIds.Contains(d.CustomerId))
-            .ToListAsync();
-
-        db.Devices.RemoveRange(devices);
-        db.Accounts.RemoveRange(accounts);
-        await db.SaveChangesAsync();
-
+        await accountService.DeleteAsync(accounts);
         return NoContent();
     }
 
