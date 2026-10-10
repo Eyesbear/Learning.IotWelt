@@ -18,7 +18,7 @@ public class JwtOptions
     {
         if (string.IsNullOrWhiteSpace(SigningKey))
             throw new InvalidOperationException(
-                "Jwt:SigningKey fehlt. Lokal per 'dotnet user-secrets set \"Jwt:SigningKey\" <base64>' setzen (siehe CLAUDE.md).");
+                "Jwt:SigningKey fehlt. Lokal als AppHost-Parameter 'jwt-signing-key' setzen, sonst per Env-Var Jwt__SigningKey (siehe CLAUDE.md).");
 
         var bytes = Convert.FromBase64String(SigningKey);
         if (bytes.Length < 32)
