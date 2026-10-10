@@ -9,6 +9,7 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 ## [Unreleased] — v2.0 im Umbau
 
 ### Added
+- Portal-Seite **Einladung annehmen** (`/account/accept-invitation`, Ziel des Einladungslinks): neue Person legt direkt einen Login an und ist angemeldet (B2); bestehender Login meldet sich an und nimmt an, danach wechselt das Portal gleich in das neue Konto (B3). Abgelaufene, schon angenommene und fremde Einladungen (anderer Login angemeldet) werden erklärt
 - Portal-Seite **Mitglieder** (`/account/members`, nur für den Owner, Menüeintrag nur für Owner): Personen per E-Mail als Leser/Bearbeiter einladen, offene Einladungen zurückziehen oder abgelaufene erneut senden, Rolle ändern, Mitglied entfernen, Eigentümerschaft übertragen. Die Übertragung läuft als Formular-POST (`/account/transfer-ownership`, mit Antiforgery-Schutz) und erneuert danach sofort Tokens und Cookie
 - **Passwort ändern** im Portal-Profil (Story A3): Die aktuelle Sitzung bleibt angemeldet und bekommt neue Tokens, alle anderen Sitzungen des Logins werden beendet; der Tausch läuft unter der Sitzungssperre, damit kein paralleler Refresh das widerrufene Token vorlegt
 - Portal-Seite **Konto und Login löschen** (`/account/delete`): eigenes aktives Konto mit Bestätigung löschen (C4), danach den Login mit Passwortbestätigung (A4); weitere eigene Konten werden aufgelistet. Nach dem Löschen eines Kontos wird die Sitzung sofort erneuert, damit Token und Cookie nicht mehr auf das gelöschte Konto zeigen

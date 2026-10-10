@@ -53,6 +53,18 @@ public class IotWeltApiClient([FromKeyedServices(IotWeltApiClient.HttpClientName
         return await ToResultAsync(response, default);
     }
 
+    // B3: Einladung mit dem angemeldeten Login annehmen. Liefert das neue Konto (noch nicht aktiv —
+    // der Aufrufer wechselt per Kontowechsel hinein). 403 = andere E-Mail, 409 schon Mitglied, 410 abgelaufen/verbraucht.
+    public async Task<AuthResult<AccountSummaryDto>> AcceptInvitationAsync(string token, CancellationToken ct = default)
+    {
+        var response = await http.PostAsync($"/api/invitations/{Uri.EscapeDataString(token)}/accept", content: null, ct);
+        if (response.IsSuccessStatusCode)
+            return new(await response.Content.ReadFromJsonAsync<AccountSummaryDto>(ct), true);
+
+        var failure = await ToResultAsync(response, ct);
+        return new(default, false, failure.ErrorCode, failure.Errors);
+    }
+
     // C4: aktives Konto samt Geräten und Messwerten löschen. Fehlercode MemberErrors.NotOwner (409) oder
     // AuthApiClient.ForbiddenErrorCode (403), wenn der Login nicht (mehr) Owner ist.
     // Das Access-Token nennt danach noch das gelöschte Konto — die Sitzung muss erneuert werden.

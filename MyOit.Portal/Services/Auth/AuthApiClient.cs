@@ -48,6 +48,25 @@ public sealed class AuthApiClient(HttpClient http)
         return response.IsSuccessStatusCode ? new AuthResult(true) : await ReadFailureAsync(response, ct);
     }
 
+    // Infos zur Einladung für die Annahmeseite (anonym) — null, wenn es den Link nicht gibt
+    public async Task<InvitationInfoDto?> GetInvitationAsync(string token, CancellationToken ct = default)
+    {
+        var response = await http.GetAsync($"/api/invitations/{Uri.EscapeDataString(token)}", ct);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<InvitationInfoDto>(ct);
+    }
+
+    // B2: Login über den Einladungslink anlegen — liefert direkt ein Token-Paar im eingeladenen Konto.
+    // 400 = Passwortregeln, 409 MemberErrors.LoginExists, 410 MemberErrors.InvitationInvalid
+    public async Task<AuthResult<TokenResponse>> RegisterFromInvitationAsync(
+        string token, RegisterFromInvitationRequest request, CancellationToken ct = default)
+    {
+        var response = await http.PostAsJsonAsync($"/api/invitations/{Uri.EscapeDataString(token)}/register", request, ct);
+        return await ReadTokenResultAsync(response, ct);
+    }
+
     public async Task<AuthResult<TokenResponse>> LoginAsync(string email, string password, CancellationToken ct = default)
     {
         var response = await http.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, password), ct);
@@ -127,13 +146,13 @@ public sealed class AuthApiClient(HttpClient http)
         return new(default, false, failure.ErrorCode, failure.Errors);
     }
 
-    // 400 (ValidationProblem) und 401/403/409 (ProblemDetails mit Fehlercode im title) sind fachliche Fehler,
+    // 400 (ValidationProblem) und 401/403/409/410 (ProblemDetails mit Fehlercode im title) sind fachliche Fehler,
     // alles andere (500, API nicht erreichbar) ist eine Störung und wird als Exception weitergereicht.
     // Auch von IotWeltApiClient genutzt (Löschen von Konto und Login).
     internal static async Task<AuthResult> ReadFailureAsync(HttpResponseMessage response, CancellationToken ct)
     {
         if (response.StatusCode is not (HttpStatusCode.BadRequest or HttpStatusCode.Unauthorized
-            or HttpStatusCode.Forbidden or HttpStatusCode.Conflict))
+            or HttpStatusCode.Forbidden or HttpStatusCode.Conflict or HttpStatusCode.Gone))
             response.EnsureSuccessStatusCode();
 
         HttpValidationProblemDetails? problem = null;
@@ -146,11 +165,11 @@ public sealed class AuthApiClient(HttpClient http)
             // Leerer oder kein JSON-Body (z. B. Forbid()) — dann gibt es nur den Statuscode
         }
 
-        // Nur bei 401/409 steht ein Fehlercode im title; bei 400 ist er der allgemeine Validierungstext.
+        // Nur bei 401/409/410 steht ein Fehlercode im title; bei 400 ist er der allgemeine Validierungstext.
         // 403 (Forbid()) hat keinen Body — dafür ein eigener Code des Portals.
         var errorCode = response.StatusCode switch
         {
-            HttpStatusCode.Unauthorized or HttpStatusCode.Conflict => problem?.Title,
+            HttpStatusCode.Unauthorized or HttpStatusCode.Conflict or HttpStatusCode.Gone => problem?.Title,
             HttpStatusCode.Forbidden => ForbiddenErrorCode,
             _ => null,
         };
