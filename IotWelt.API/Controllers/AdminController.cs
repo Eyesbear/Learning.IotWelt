@@ -11,7 +11,7 @@ namespace IotWelt.API.Controllers;
 [Authorize(Roles = Policies.AdminRole)]
 [ApiController]
 [Route("api/admin")]
-public class AdminController(AppDbContext db, AccountService accountService) : ControllerBase
+public class AdminController(AppDbContext db) : ControllerBase
 {
     [HttpGet("devices")]
     public async Task<ActionResult<PagedResult<AdminDeviceDto>>> GetDevices(
@@ -80,40 +80,13 @@ public class AdminController(AppDbContext db, AccountService accountService) : C
         return NoContent();
     }
 
-    // Übergangsweise im alten Format (CustomerProfileDto) — wird in PR 1c durch Konten/Logins ersetzt
-    [HttpGet("customers")]
-    public async Task<ActionResult<List<CustomerProfileDto>>> GetCustomers()
-    {
-        var owners = await Owners()
-            .Select(o => new CustomerProfileDto(o.UserId, o.CustomerId, o.DisplayName, o.Email))
-            .ToListAsync();
-
-        return Ok(owners);
-    }
-
-    // Löscht alle Konten, deren Owner dieser Login ist, samt Geräten (Messwerte per Cascade).
-    // Der Login selbst bleibt bestehen — Login-Verwaltung folgt in PR 1c.
-    [HttpDelete("customers/{ownerId}")]
-    public async Task<IActionResult> DeleteCustomer(string ownerId)
-    {
-        var accounts = await db.Accounts
-            .Where(a => a.Memberships.Any(m => m.UserId == ownerId && m.Role == AccountRole.Owner))
-            .ToListAsync();
-        if (accounts.Count == 0)
-            return NotFound();
-
-        await accountService.DeleteAsync(accounts);
-        return NoContent();
-    }
-
     // Owner je Konto (genau einer pro Konto) — ersetzt die frühere Tabelle CustomerProfiles.
     // Filtern und Sortieren VOR dem Select: auf Eigenschaften eines per Konstruktor erzeugten
     // Records kann EF Core nicht mehr in SQL übersetzen.
-    private IQueryable<OwnerInfo> Owners(List<string>? customerIds = null)
+    private IQueryable<OwnerInfo> Owners(List<string> customerIds)
     {
-        var owners = db.AccountMemberships.Where(m => m.Role == AccountRole.Owner);
-        if (customerIds is not null)
-            owners = owners.Where(m => customerIds.Contains(m.Account.CustomerId));
+        var owners = db.AccountMemberships
+            .Where(m => m.Role == AccountRole.Owner && customerIds.Contains(m.Account.CustomerId));
 
         return owners
             .OrderBy(m => m.User.DisplayName ?? m.User.Email ?? m.UserId)

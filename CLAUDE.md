@@ -18,8 +18,7 @@ Git- und VS-Schritte meist selbst aus — erst erklären, dann auf Rückmeldung 
 - **Konto vs. Login:** Ein Konto (Mandant, `CustomerId`) gehört einem Eigentümer, kann aber
   **mehrere Logins** haben (z. B. lesender Zugriff für Dritte, ohne Credentials weiterzugeben).
   Rechte hängen daher an der Mitgliedschaft *Login ↔ Konto* (Konto-Rolle), nicht am Login selbst.
-  Die System-Rolle `Admin` ist davon getrennt. Details/User Stories: offen, werden vor Phase 1
-  in `docs/user-stories/benutzerverwaltung.md` festgelegt.
+  Die System-Rolle `Admin` ist davon getrennt. User Stories: `docs/user-stories/benutzerverwaltung.md`.
 - **Umgebungen:** lokal = Aspire (F5) · Staging = Docker Compose im LAN · Produktion = myASP.NET (IIS, kein Docker).
 - **Konfiguration:** keine Secrets in `appsettings*.json` — lokal User-Secrets, sonst Env-Vars / `.env`.
 
@@ -28,12 +27,30 @@ Git- und VS-Schritte meist selbst aus — erst erklären, dann auf Rückmeldung 
 |---|---|---|
 | `IotWelt.AppHost` | Aspire AppHost | Lokale Orchestrierung (API + Portal) |
 | `IotWelt.ServiceDefaults` | Class Library | Health-Checks, OpenTelemetry, Service Discovery |
-| `IotWelt.API` | ASP.NET Core Web API | REST-API, EF Core, (künftig) Identity + Token-Ausgabe |
+| `IotWelt.API` | ASP.NET Core Web API | REST-API, EF Core, Identity + Token-Ausgabe |
 | `MyOit.Portal` | Blazor Server (Radzen) | Web-Frontend, ruft nur die API auf |
 | `IotWelt.Common` | Class Library | DTOs, die API und Clients teilen |
 | `IotWelt.API.Tests` | xUnit | Integrationstests: `WebApplicationFactory` + SQL Server per Testcontainers, angemeldet wird mit echten Tokens (`factory.CreateUserAsync()` in `Infrastructure/TestUsers.cs`) |
 
 Geplant: `IotWelt.Maui` (Android/Windows).
+
+## Auth-Architektur
+- **API** (`IotWelt.API`): `AddIdentityCore<AppUser>` ohne Cookies/UI. `TokenService` stellt JWT (HS256, 15 min,
+  Claims `sub`, `name`, `email`, `role`, `account_id`, `account_role`) und Refresh-Token (14 Tage, nur als Hash
+  gespeichert, bei jedem Refresh rotiert) aus. Ein zweimal vorgelegtes Refresh-Token widerruft **alle**
+  Sitzungen des Logins. Rollen/Konto im Token wirken erst nach dem nächsten Refresh.
+- **Rechte:** Policies `CanRead`/`CanEdit`/`IsOwner` (Konto-Rolle) und Rolle `Admin` (`Services/Policies.cs`);
+  `CurrentAccount` liefert `UserId`/`CustomerId` des aktiven Kontos.
+- **Portal** (`MyOit.Portal/Services/Auth`): Cookie enthält nur die Sitzungs-ID (`portal_sid`), die Tokens liegen
+  serverseitig im `ITokenStore` (derzeit im Speicher). `TokenSessionManager` erneuert und serialisiert alles,
+  was das Refresh-Token verbraucht (Refresh, Logout, Kontowechsel, Passwortänderung) pro Sitzung — neue
+  Token-Verwendungen nur über ihn. `BearerTokenHandler` hängt das Token an `IotWeltApiClient`.
+- **Cookie ändern** geht nur außerhalb des Circuits: Seiten mit Anmeldung/Cookie-Erneuerung sind statisches SSR
+  (`[ExcludeFromInteractiveRouting]`); interaktive Seiten nutzen Formular-POSTs an `/account/*`
+  (`AccountEndpoints.cs`, Antiforgery-Pflicht per Endpoint-Filter — `UseAntiforgery()` allein blockiert nicht).
+- **401 von der API** → Seite ruft `Navigation.NavigateToLogin()` (Rücksprung auf die Seite).
+- **Secrets:** `Jwt:SigningKey` (Base64, ≥ 32 Bytes) lokal als AppHost-Parameter, `SeedAdmin:Email`/`Password`
+  in den User-Secrets der API. Mails (Bestätigung, Reset, Einladung) werden derzeit nur geloggt (`LoggingEmailSender`).
 
 ## Bauen, Testen, Starten
 ```powershell
@@ -42,6 +59,8 @@ dotnet test IotWelt.slnx          # braucht laufendes Docker (Testcontainers sta
 dotnet run --project IotWelt.AppHost
 ```
 - Startprojekt in VS: `IotWelt.AppHost`; Aspire-Dashboard öffnet sich automatisch.
+- JWT-Schlüssel einmalig setzen (sonst fragt das Dashboard danach):
+  `dotnet user-secrets set "Parameters:jwt-signing-key" <base64> --project IotWelt.AppHost`
 - API lokal fest auf `http://localhost:5013` (wegen ESP32 im LAN auch `0.0.0.0:5013`).
 - Scalar-UI (nur Development): `/scalar/v1`. Manuelle Requests: `IotWelt.API/IotWelt.API.http`.
 
@@ -67,8 +86,10 @@ betroffene Seite/Endpoint einmal real ausprobiert, `CHANGELOG.md` ergänzt.
 ## API-Überblick
 - `GET/POST/PUT/DELETE /api/devices`, `GET /api/devices/dashboard` — Geräte des eigenen Mandanten
 - `GET /api/raumklimalog/{deviceId}` — Verlaufsdaten (serverseitig aggregiert)
-- `GET /api/customers/me` — eigenes Kundenprofil
-- `/api/admin/...` — Geräte und Kunden aller Mandanten (Rolle `Admin`)
+- `GET /api/customers/me` — Kundenkennung des aktiven Kontos
+- `/api/auth/...` — Registrierung, Login, Refresh, Logout, Kontowechsel, Passwort, eigenen Login löschen
+- `/api/members/...` — Mitglieder und Einladungen des aktiven Kontos (Owner), `/api/invitations/{token}/...` — annehmen
+- `/api/admin/devices`, `/api/admin/logins` — Geräte und Logins aller Mandanten (Rolle `Admin`)
 - `POST /api/sensor` — anonym, Sensordaten vom ESP32
 
 ## ESP32-Integration
@@ -85,16 +106,16 @@ betroffene Seite/Endpoint einmal real ausprobiert, `CHANGELOG.md` ergänzt.
   beibehalten; Kommentare, Commits, CHANGELOG auf Deutsch.
 - Git: `master` nur über Pull Requests; Branches `feature/…`, `fix/…`, `chore/…`.
   Commit-Nachrichten im Stil `feat: …`, `fix: …`, `chore: …`, `docs: …`, `test: …`.
-- Versionierung: SemVer, Version in den csproj-Dateien, Einträge in `CHANGELOG.md` (Keep a Changelog).
+- Versionierung: SemVer, Version zentral in `Directory.Build.props` (`VersionPrefix`, nicht in den csproj-Dateien), Einträge in `CHANGELOG.md` (Keep a Changelog).
 - Kleine, einzeln prüfbare Commits; keine kommentarlosen Großumbauten.
 
 ## Aktueller Stand / Roadmap
 Plan: Phase 0 Fundament (Git, CLAUDE.md, Tests) → 1 eigene Benutzerverwaltung (Azure-Ausbau) →
 2 Docker/Compose-Staging → 3 GitHub Actions → 4 myASP.NET-Produktion → 5 MAUI → 6 SQL-Tuning, ESP32, Zeitzonen.
 
-**Übergangszustand:** Der Code enthält noch Entra-ID-Auth (`Microsoft.Identity.Web`, `AzureAd`-Sections,
-`GraphUserService`). Diese Teile werden in Phase 1 vollständig ersetzt — nicht weiter ausbauen.
-Letzter Azure-Stand: Git-Tag `v0.4.1-azure`. `MIGRATION_SPEC_V2.0.md` ist nur noch für myASP.NET-Details relevant.
+**Stand:** Phase 0 und 1 abgeschlossen (v0.5.0, eigene Benutzerverwaltung, kein Azure mehr im Code).
+Als Nächstes Phase 2 (Docker/Compose-Staging). Letzter Azure-Stand: Git-Tag `v0.4.1-azure`.
+`MIGRATION_SPEC_V2.0.md`: umgesetzte Auth-Architektur und offene Punkte für myASP.NET (Phase 4).
 
 Lernjournal: `ZZZ_Learning/Lernjournal.md` — nach jeder Phase ergänzen.
 Bekannte Lücken und Folgepunkte: `docs/backlog.md` — neue Funde dort eintragen statt sie nur zu erwähnen.

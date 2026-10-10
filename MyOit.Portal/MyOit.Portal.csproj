@@ -6,7 +6,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>aspnet-MyOit_Portal-da13daca-5334-47eb-a367-ba2f23aeed06</UserSecretsId>
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
-    <Version>0.4.1</Version>
   </PropertyGroup>
 
   <ItemGroup>

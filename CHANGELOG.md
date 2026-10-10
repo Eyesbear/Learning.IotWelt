@@ -6,9 +6,14 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 
 ---
 
-## [Unreleased] — v2.0 im Umbau
+## [Unreleased]
+
+---
+
+## [0.5.0] — 2026-10-10 — Phase 1: eigene Benutzerverwaltung (v2.0 im Umbau)
 
 ### Added
+- Scalar (`/scalar/v1`, nur Development) bietet ein Feld für das Bearer-Token an: Das OpenAPI-Dokument beschreibt jetzt das Sicherheitsschema `Bearer` (JWT), bisher musste der `Authorization`-Header von Hand gesetzt werden
 - Portal-Seite **Einladung annehmen** (`/account/accept-invitation`, Ziel des Einladungslinks): neue Person legt direkt einen Login an und ist angemeldet (B2); bestehender Login meldet sich an und nimmt an, danach wechselt das Portal gleich in das neue Konto (B3). Abgelaufene, schon angenommene und fremde Einladungen (anderer Login angemeldet) werden erklärt
 - Portal-Seite **Mitglieder** (`/account/members`, nur für den Owner, Menüeintrag nur für Owner): Personen per E-Mail als Leser/Bearbeiter einladen, offene Einladungen zurückziehen oder abgelaufene erneut senden, Rolle ändern, Mitglied entfernen, Eigentümerschaft übertragen. Die Übertragung läuft als Formular-POST (`/account/transfer-ownership`, mit Antiforgery-Schutz) und erneuert danach sofort Tokens und Cookie
 - **Passwort ändern** im Portal-Profil (Story A3): Die aktuelle Sitzung bleibt angemeldet und bekommt neue Tokens, alle anderen Sitzungen des Logins werden beendet; der Tausch läuft unter der Sitzungssperre, damit kein paralleler Refresh das widerrufene Token vorlegt
@@ -33,14 +38,18 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 - `docs/user-stories/benutzerverwaltung.md`: User Stories für Konto/Login/Mitgliedschaft (Owner/Editor/Reader, Einladungen, Kontowechsel)
 
 ### Changed
+- **JWT-Signaturschlüssel kommt lokal aus dem AppHost**: Aspire-Parameter `jwt-signing-key` (geheim, User-Secrets des AppHost unter `Parameters:jwt-signing-key`), an die API als `Jwt__SigningKey` weitergereicht — derselbe Weg wie später per Env-Var in Compose; das Portal bekommt keine Datenbank-Referenz mehr
 - **Admin-Benutzerverwaltung** im Portal (`/admin/users`) arbeitet auf den Logins statt auf Microsoft Graph (Stories E1–E3): Logins mit Konten, Rollen und Status, sperren/entsperren, Admin-Rolle vergeben/entziehen, Konten eines Eigentümers löschen, Login löschen (erst wenn er keine Konten mehr besitzt); am eigenen Login sind diese Aktionen ausgeblendet. Abgelaufene Anmeldung führt zum Login
-- Token-Erzeugung und -Hash aus `TokenService` nach `SecureToken` ausgelagert (gemeinsam für Refresh-Tokens und Einladungen); Löschlogik für Konten nach `AccountService.DeleteAsync` (genutzt von C4 und `DELETE /api/admin/customers/{ownerId}`, Verhalten unverändert)
+- Token-Erzeugung und -Hash aus `TokenService` nach `SecureToken` ausgelagert (gemeinsam für Refresh-Tokens und Einladungen); Löschlogik für Konten nach `AccountService.DeleteAsync` (genutzt von C4 und dem Admin-Löschen der Konten eines Logins, Verhalten unverändert)
 - **Migrationen neu aufgesetzt** (`InitialV2`) — alte Stände nur noch über Tag `v0.4.1-azure`; lokale DB neu erstellen
 - `CustomerProfiles` ersetzt durch `Accounts` + `AccountMemberships`; `CustomerService` ersetzt durch `CurrentAccount` (liest das aktive Konto aus dem Token)
+- `CLAUDE.md` beschreibt die umgesetzte Auth-Architektur statt des Übergangszustands; `MIGRATION_SPEC_V2.0.md` an die tatsächliche Umsetzung angepasst (API als Token-Aussteller, Env-Vars statt Secrets in `appsettings.Production.json`, offene Punkte für myASP.NET)
 - `CLAUDE.md` für die v2.0-Zielarchitektur neu geschrieben (kein Azure, API als Token-Aussteller, Definition of Done, Konventionen)
 - `.claude/settings.local.json` nicht mehr versioniert
+- Version steht nur noch zentral in `Directory.Build.props` (`VersionPrefix` 0.5.0); die `<Version>`-Einträge in API und Portal sind entfernt — die drei Angaben waren schon wieder auseinandergelaufen (0.2.0 / 0.4.1)
 
 ### Removed
+- `GET /api/admin/customers` und `CustomerProfileDto` (ungenutzt seit der Login-Verwaltung); das Löschen der Konten eines Logins heißt jetzt `DELETE /api/admin/logins/{userId}/accounts` statt `DELETE /api/admin/customers/{ownerId}`
 - Entra-ID-Anmeldung und Microsoft Graph im Portal (`Microsoft.Identity.Web(.UI)`, `Microsoft.Graph`, `GraphUserService`, Section `AzureAd`, `IotWeltApi:Scopes`, Testseite `/auth`) sowie ungenutzte EF-Core-Pakete im Portal
 - Demoseiten Counter und Weather aus der Projektvorlage
 - Entra-ID-Validierung in der API (`Microsoft.Identity.Web`, Section `AzureAd`)
@@ -53,6 +62,11 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 - Portal: Formular-Endpoints unter `/account` (Logout, Kontowechsel) lehnen Anfragen ohne gültiges Antiforgery-Token ab (400) — `UseAntiforgery()` prüft nur und blockiert selbst nicht; eine fremde Seite hätte sonst per Auto-Submit abmelden oder das Konto wechseln können
 - `POST /api/sensor` hängt ein Gerät mit vorhandenem Besitzer nicht mehr um — bisher konnte jeder, der die `hardwareId` kannte, das Gerät per `customer_id` in ein fremdes Konto holen. Abweichende `customer_id` wird ignoriert und als Warnung geloggt; herrenlose Geräte werden weiterhin beim ersten Melden zugeordnet
 - Bekannt, offen bis Phase 6 (Geräte-Schlüssel): Wer eine `hardwareId` kennt, kann weiterhin Messwerte einschleusen; wer eine `customer_id` kennt, kann neue Geräte in dieses Konto melden
+
+### Migrations
+- `20261008133322_InitialV2` (neue Basis, ersetzt alle früheren Migrationen)
+- `20261009202813_AccountInvitations`
+- `20261009210403_OneOwnerPerAccount`
 
 ---
 

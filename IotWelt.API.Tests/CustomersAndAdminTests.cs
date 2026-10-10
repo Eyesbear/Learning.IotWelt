@@ -49,13 +49,13 @@ public class CustomersAndAdminTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task Admin_loescht_Kunden_samt_Geraeten()
+    public async Task Admin_loescht_Konten_eines_Logins_samt_Geraeten()
     {
         var kunde = await factory.CreateUserAsync();
         await kunde.Client.PostAsJsonAsync("/api/devices", new { name = "Weg" });
         var admin = await factory.CreateUserAsync(admin: true);
 
-        var delete = await admin.Client.DeleteAsync($"/api/admin/customers/{kunde.UserId}");
+        var delete = await admin.Client.DeleteAsync($"/api/admin/logins/{kunde.UserId}/accounts");
 
         Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
         var page = await admin.Client.GetFromJsonAsync<PagedResult<AdminDeviceDto>>(
