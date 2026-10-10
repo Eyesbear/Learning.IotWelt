@@ -97,3 +97,4 @@ Plan: Phase 0 Fundament (Git, CLAUDE.md, Tests) → 1 eigene Benutzerverwaltung 
 Letzter Azure-Stand: Git-Tag `v0.4.1-azure`. `MIGRATION_SPEC_V2.0.md` ist nur noch für myASP.NET-Details relevant.
 
 Lernjournal: `ZZZ_Learning/Lernjournal.md` — nach jeder Phase ergänzen.
+Bekannte Lücken und Folgepunkte: `docs/backlog.md` — neue Funde dort eintragen statt sie nur zu erwähnen.
