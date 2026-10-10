@@ -9,6 +9,10 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 ## [Unreleased] — v2.0 im Umbau
 
 ### Added
+- **Portal meldet sich an der eigenen API an** (Cookie statt Entra ID): Login, Logout, „Angemeldet bleiben“; im Cookie steht nur eine Sitzungs-ID, Access- und Refresh-Token bleiben serverseitig im Portal und werden vor Ablauf automatisch erneuert (pro Sitzung serialisiert, damit kein Refresh-Token doppelt verwendet wird)
+- Portal-Seiten für **Registrierung mit E-Mail-Bestätigung** und **Passwort vergessen/zurücksetzen** (`/account/...`); Identity-Fehler der API erscheinen auf Deutsch
+- **Kontowechsler** im Kopfbereich des Portals, sichtbar bei Logins mit mehreren Konten
+- Abgelaufene oder widerrufene Anmeldung führt in Dashboard, Geräten, Gerätedetail und Profil zurück zum Login (mit Rücksprung auf die Seite)
 - **Eigene Benutzerverwaltung in der API** (ASP.NET Core Identity): Registrierung mit E-Mail-Bestätigung, Login mit Sperre nach 5 Fehlversuchen, Passwort vergessen/ändern — `/api/auth/...`
 - **Eigene Token-Ausgabe**: JWT (HS256, 15 min) + Refresh-Token (14 Tage, nur als SHA-256-Hash gespeichert), Rotation bei jedem Refresh; Wiederverwendung eines verbrauchten Tokens widerruft alle Sitzungen des Logins
 - **Konten und Mitgliedschaften**: Registrierung legt ein Konto (`CustomerId`) mit dem Login als Owner an; Konto-Rollen Owner/Editor/Reader, Kontowechsel über `/api/auth/switch-account`
@@ -19,12 +23,15 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 - `docs/user-stories/benutzerverwaltung.md`: User Stories für Konto/Login/Mitgliedschaft (Owner/Editor/Reader, Einladungen, Kontowechsel)
 
 ### Changed
+- Admin-Benutzerverwaltung im Portal zeigt die Kundenliste über die API statt über Microsoft Graph; Löschen entfernt die Konten eines Eigentümers samt Geräten, der Login selbst bleibt bestehen
 - **Migrationen neu aufgesetzt** (`InitialV2`) — alte Stände nur noch über Tag `v0.4.1-azure`; lokale DB neu erstellen
 - `CustomerProfiles` ersetzt durch `Accounts` + `AccountMemberships`; `CustomerService` ersetzt durch `CurrentAccount` (liest das aktive Konto aus dem Token)
 - `CLAUDE.md` für die v2.0-Zielarchitektur neu geschrieben (kein Azure, API als Token-Aussteller, Definition of Done, Konventionen)
 - `.claude/settings.local.json` nicht mehr versioniert
 
 ### Removed
+- Entra-ID-Anmeldung und Microsoft Graph im Portal (`Microsoft.Identity.Web(.UI)`, `Microsoft.Graph`, `GraphUserService`, Section `AzureAd`, `IotWeltApi:Scopes`, Testseite `/auth`) sowie ungenutzte EF-Core-Pakete im Portal
+- Demoseiten Counter und Weather aus der Projektvorlage
 - Entra-ID-Validierung in der API (`Microsoft.Identity.Web`, Section `AzureAd`)
 
 ### Fixed
