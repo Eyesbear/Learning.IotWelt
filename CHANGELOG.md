@@ -9,10 +9,14 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 ## [Unreleased] — v2.0 im Umbau
 
 ### Added
+- Portal-Seite **Einladung annehmen** (`/account/accept-invitation`, Ziel des Einladungslinks): neue Person legt direkt einen Login an und ist angemeldet (B2); bestehender Login meldet sich an und nimmt an, danach wechselt das Portal gleich in das neue Konto (B3). Abgelaufene, schon angenommene und fremde Einladungen (anderer Login angemeldet) werden erklärt
+- Portal-Seite **Mitglieder** (`/account/members`, nur für den Owner, Menüeintrag nur für Owner): Personen per E-Mail als Leser/Bearbeiter einladen, offene Einladungen zurückziehen oder abgelaufene erneut senden, Rolle ändern, Mitglied entfernen, Eigentümerschaft übertragen. Die Übertragung läuft als Formular-POST (`/account/transfer-ownership`, mit Antiforgery-Schutz) und erneuert danach sofort Tokens und Cookie
+- **Passwort ändern** im Portal-Profil (Story A3): Die aktuelle Sitzung bleibt angemeldet und bekommt neue Tokens, alle anderen Sitzungen des Logins werden beendet; der Tausch läuft unter der Sitzungssperre, damit kein paralleler Refresh das widerrufene Token vorlegt
+- Portal-Seite **Konto und Login löschen** (`/account/delete`): eigenes aktives Konto mit Bestätigung löschen (C4), danach den Login mit Passwortbestätigung (A4); weitere eigene Konten werden aufgelistet. Nach dem Löschen eines Kontos wird die Sitzung sofort erneuert, damit Token und Cookie nicht mehr auf das gelöschte Konto zeigen
 - **Portal meldet sich an der eigenen API an** (Cookie statt Entra ID): Login, Logout, „Angemeldet bleiben“; im Cookie steht nur eine Sitzungs-ID, Access- und Refresh-Token bleiben serverseitig im Portal und werden vor Ablauf automatisch erneuert (pro Sitzung serialisiert, damit kein Refresh-Token doppelt verwendet wird)
 - Portal-Seiten für **Registrierung mit E-Mail-Bestätigung** und **Passwort vergessen/zurücksetzen** (`/account/...`); Identity-Fehler der API erscheinen auf Deutsch
 - **Kontowechsler** im Kopfbereich des Portals, sichtbar bei Logins mit mehreren Konten
-- Abgelaufene oder widerrufene Anmeldung führt in Dashboard, Geräten, Gerätedetail und Profil zurück zum Login (mit Rücksprung auf die Seite)
+- Abgelaufene oder widerrufene Anmeldung führt in Dashboard, Geräten, Gerätedetail, Klimaverlauf, Profil und den Admin-Seiten zurück zum Login (mit Rücksprung auf die Seite)
 - **Einladungen** (Stories B1–B3): Owner lädt per E-Mail als Editor/Reader ein (`POST /api/members/invitations`), Link 7 Tage gültig und nur einmal nutzbar, Token nur als SHA-256-Hash gespeichert. Annahme mit vorhandenem Login (`POST /api/invitations/{token}/accept`, E-Mail muss passen) oder mit neuem Login ohne eigenes Konto (`POST /api/invitations/{token}/register`, liefert direkt ein Token-Paar)
 - **Mitgliederverwaltung** für Owner (`/api/members`, Stories C1–C5): Mitglieder und offene Einladungen anzeigen, Rolle ändern, Mitglied entfernen, Ownership übertragen, Konto löschen (mit Geräten, Messwerten, Mitgliedschaften, Einladungen)
 - **Eigenen Login löschen** (`DELETE /api/auth/me`, Story A4) mit Passwortbestätigung; abgelehnt, solange der Login Owner eines Kontos ist
@@ -29,7 +33,7 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 - `docs/user-stories/benutzerverwaltung.md`: User Stories für Konto/Login/Mitgliedschaft (Owner/Editor/Reader, Einladungen, Kontowechsel)
 
 ### Changed
-- Admin-Benutzerverwaltung im Portal zeigt die Kundenliste über die API statt über Microsoft Graph; Löschen entfernt die Konten eines Eigentümers samt Geräten, der Login selbst bleibt bestehen
+- **Admin-Benutzerverwaltung** im Portal (`/admin/users`) arbeitet auf den Logins statt auf Microsoft Graph (Stories E1–E3): Logins mit Konten, Rollen und Status, sperren/entsperren, Admin-Rolle vergeben/entziehen, Konten eines Eigentümers löschen, Login löschen (erst wenn er keine Konten mehr besitzt); am eigenen Login sind diese Aktionen ausgeblendet. Abgelaufene Anmeldung führt zum Login
 - Token-Erzeugung und -Hash aus `TokenService` nach `SecureToken` ausgelagert (gemeinsam für Refresh-Tokens und Einladungen); Löschlogik für Konten nach `AccountService.DeleteAsync` (genutzt von C4 und `DELETE /api/admin/customers/{ownerId}`, Verhalten unverändert)
 - **Migrationen neu aufgesetzt** (`InitialV2`) — alte Stände nur noch über Tag `v0.4.1-azure`; lokale DB neu erstellen
 - `CustomerProfiles` ersetzt durch `Accounts` + `AccountMemberships`; `CustomerService` ersetzt durch `CurrentAccount` (liest das aktive Konto aus dem Token)
@@ -42,9 +46,11 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 - Entra-ID-Validierung in der API (`Microsoft.Identity.Web`, Section `AzureAd`)
 
 ### Fixed
+- Portal: Ein Fehler beim Laden des Klimaverlaufs (API nicht erreichbar, Sitzung abgelaufen) beendete den ganzen Circuit; jetzt erscheint ein Hinweis bzw. der Login
 - Admin-Geräteliste: Besitzerabfrage war von EF Core nicht übersetzbar (Filter nach der Projektion in einen Record)
 
 ### Security
+- Portal: Formular-Endpoints unter `/account` (Logout, Kontowechsel) lehnen Anfragen ohne gültiges Antiforgery-Token ab (400) — `UseAntiforgery()` prüft nur und blockiert selbst nicht; eine fremde Seite hätte sonst per Auto-Submit abmelden oder das Konto wechseln können
 - `POST /api/sensor` hängt ein Gerät mit vorhandenem Besitzer nicht mehr um — bisher konnte jeder, der die `hardwareId` kannte, das Gerät per `customer_id` in ein fremdes Konto holen. Abweichende `customer_id` wird ignoriert und als Warnung geloggt; herrenlose Geräte werden weiterhin beim ersten Melden zugeordnet
 - Bekannt, offen bis Phase 6 (Geräte-Schlüssel): Wer eine `hardwareId` kennt, kann weiterhin Messwerte einschleusen; wer eine `customer_id` kennt, kann neue Geräte in dieses Konto melden
 

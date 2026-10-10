@@ -2,116 +2,271 @@
 @attribute [Authorize(Roles = "Admin")]
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 
+@using System.Net
+@using System.Security.Claims
+@using IotWelt.Common.Admin
+@using IotWelt.Common.Auth
+@using MyOit.Portal.Services.Auth
 @inject IotWeltApiClient Api
-@inject IJSRuntime JS
-@using IotWelt.Common
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject ILogger<UserManagement> Logger
+
+@* Login-Verwaltung für System-Admins (Stories E1–E3). Am eigenen Login sind Sperren, Admin-Entzug
+   und Löschen gesperrt — die API lehnt das ohnehin ab (409 self_action). *@
 
 <PageTitle>Benutzerverwaltung</PageTitle>
 
 <h2 class="mb-4">Benutzerverwaltung</h2>
 
-<div class="alert alert-info mb-3">
-    Vorerst nur die Kundenkonten: Die Verwaltung der Logins (Admin-Rolle, Logins löschen,
-    Mitglieder) folgt mit dem nächsten Ausbauschritt (PR 1e).
-</div>
-
+@if (message is not null)
+{
+    <div class="alert alert-success mb-3">@message</div>
+}
 @if (errorMessage is not null)
 {
     <div class="alert alert-danger mb-3">@errorMessage</div>
 }
 
-@if (isLoading)
+@if (logins is null)
 {
-    <p>Wird geladen…</p>
+    @if (errorMessage is null)
+    {
+        <p>Wird geladen…</p>
+    }
 }
-else if (customerRows.Count == 0)
+else if (logins.Count == 0)
 {
-    <p>Keine Kundenkonten vorhanden.</p>
+    <p>Keine Logins vorhanden.</p>
 }
 else
 {
     <div class="table-responsive">
-        <table class="table table-hover align-middle">
+        <table class="table align-middle">
             <thead class="table-light">
                 <tr>
-                    <th>Eigentümer</th>
-                    <th>E-Mail</th>
-                    <th>Kunden-ID</th>
+                    <th>Login</th>
+                    <th>Konten</th>
+                    <th>Status</th>
                     <th></th>
                 </tr>
             </thead>
             <tbody>
-                @foreach (var row in customerRows)
+                @foreach (var login in logins)
                 {
+                    var isSelf = login.UserId == currentUserId;
+                    var ownsAccounts = login.Accounts.Any(a => a.Role == RoleTexts.Owner);
                     <tr>
-                        <td>@(row.Profile.DisplayName ?? "—")</td>
-                        <td>@(row.Profile.Email ?? "—")</td>
-                        <td><code>@row.Profile.CustomerId</code></td>
                         <td>
-                            <button class="btn btn-sm btn-outline-danger"
-                                    disabled="@row.IsBusy"
-                                    @onclick="@(() => DeleteCustomerAsync(row))">
-                                Löschen
-                            </button>
+                            @(login.DisplayName ?? login.Email)
+                            @if (isSelf)
+                            {
+                                <span class="text-muted small">(Sie)</span>
+                            }
+                            @if (login.DisplayName is not null)
+                            {
+                                <div class="text-muted small">@login.Email</div>
+                            }
+                        </td>
+                        <td>
+                            @if (login.Accounts.Count == 0)
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                            @foreach (var account in login.Accounts)
+                            {
+                                <div class="small">@account.Name <span class="text-muted">(@RoleTexts.ToDisplay(account.Role))</span></div>
+                            }
+                        </td>
+                        <td>
+                            @if (login.IsAdmin)
+                            {
+                                <span class="badge text-bg-primary me-1">Admin</span>
+                            }
+                            @if (login.LockedUntil is not null)
+                            {
+                                <span class="badge text-bg-danger me-1">@LockText(login.LockedUntil.Value)</span>
+                            }
+                            @if (!login.EmailConfirmed)
+                            {
+                                <span class="badge text-bg-warning">E-Mail unbestätigt</span>
+                            }
+                        </td>
+                        <td class="text-end text-nowrap">
+                            @if (!isSelf)
+                            {
+                                @if (login.LockedUntil is null)
+                                {
+                                    <button class="btn btn-sm btn-outline-warning me-1" disabled="@isBusy"
+                                            @onclick="() => AskConfirm(login, ConfirmAction.Lock)">Sperren</button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-sm btn-outline-secondary me-1" disabled="@isBusy"
+                                            @onclick="() => UnlockAsync(login)">Entsperren</button>
+                                }
+
+                                @if (login.IsAdmin)
+                                {
+                                    <button class="btn btn-sm btn-outline-secondary me-1" disabled="@isBusy"
+                                            @onclick="() => AskConfirm(login, ConfirmAction.RevokeAdmin)">Admin entziehen</button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-sm btn-outline-secondary me-1" disabled="@isBusy"
+                                            @onclick="() => AskConfirm(login, ConfirmAction.GrantAdmin)">Zum Admin machen</button>
+                                }
+
+                                @if (ownsAccounts)
+                                {
+                                    <button class="btn btn-sm btn-outline-danger" disabled="@isBusy"
+                                            @onclick="() => AskConfirm(login, ConfirmAction.DeleteAccounts)">Konten löschen</button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-sm btn-outline-danger" disabled="@isBusy"
+                                            @onclick="() => AskConfirm(login, ConfirmAction.DeleteLogin)">Login löschen</button>
+                                }
+                            }
                         </td>
                     </tr>
+
+                    @if (confirmLogin?.UserId == login.UserId)
+                    {
+                        <tr>
+                            <td colspan="4" class="bg-body-tertiary">
+                                <p class="mb-2">@ConfirmText(login)</p>
+                                <button class="btn btn-sm btn-danger me-1" disabled="@isBusy" @onclick="() => ConfirmAsync(login)">Ja, ausführen</button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="CancelConfirm">Abbrechen</button>
+                            </td>
+                        </tr>
+                    }
                 }
             </tbody>
         </table>
     </div>
+    <p class="text-muted small">
+        Ein Login, der Eigentümer von Konten ist, lässt sich erst löschen, wenn diese Konten gelöscht sind.
+        Rechte- und Sperränderungen wirken spätestens nach 15 Minuten (Ablauf des Access-Tokens).
+    </p>
 }
 
 @code {
-    private class CustomerRow
-    {
-        public CustomerProfileDto Profile { get; init; } = null!;
-        public bool IsBusy { get; set; }
-    }
-
-    // Eine Zeile pro Konto — ein Eigentümer mit mehreren Konten erscheint mehrfach
-    private List<CustomerRow> customerRows = [];
-    private bool isLoading = true;
+    private List<AdminLoginDto>? logins;
+    private string? currentUserId;
+    private string? message;
     private string? errorMessage;
+    private bool isBusy;
+    private AdminLoginDto? confirmLogin;
+    private ConfirmAction confirmAction;
+
+    private enum ConfirmAction { Lock, GrantAdmin, RevokeAdmin, DeleteAccounts, DeleteLogin }
 
     protected override async Task OnInitializedAsync()
     {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        currentUserId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
         try
         {
-            var profiles = await Api.GetAdminCustomersAsync();
-            customerRows = profiles.Select(p => new CustomerRow { Profile = p }).ToList();
+            logins = await Api.GetAdminLoginsAsync();
         }
-        catch (Exception ex)
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
         {
-            errorMessage = ex.Message;
+            Navigation.NavigateToLogin();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            Logger.LogWarning(ex, "Admin: Logins nicht ladbar");
+            errorMessage = "Die Logins konnten gerade nicht geladen werden. Bitte versuchen Sie es später erneut.";
+        }
+    }
+
+    private void AskConfirm(AdminLoginDto login, ConfirmAction action)
+    {
+        confirmLogin = login;
+        confirmAction = action;
+        message = null;
+        errorMessage = null;
+    }
+
+    private void CancelConfirm() => confirmLogin = null;
+
+    private Task UnlockAsync(AdminLoginDto login) =>
+        RunAsync(() => Api.AdminSetLoginLockedAsync(login.UserId, locked: false), $"{login.Email} ist entsperrt.");
+
+    private Task ConfirmAsync(AdminLoginDto login) => confirmAction switch
+    {
+        ConfirmAction.Lock => RunAsync(() => Api.AdminSetLoginLockedAsync(login.UserId, locked: true),
+            $"{login.Email} ist gesperrt."),
+        ConfirmAction.GrantAdmin => RunAsync(() => Api.AdminSetLoginAdminAsync(login.UserId, isAdmin: true),
+            $"{login.Email} ist jetzt Admin."),
+        ConfirmAction.RevokeAdmin => RunAsync(() => Api.AdminSetLoginAdminAsync(login.UserId, isAdmin: false),
+            $"{login.Email} ist kein Admin mehr."),
+        ConfirmAction.DeleteAccounts => RunAsync(() => Api.AdminDeleteOwnedAccountsAsync(login.UserId),
+            $"Die Konten von {login.Email} sind gelöscht. Der Login besteht weiter."),
+        _ => RunAsync(() => Api.AdminDeleteLoginAsync(login.UserId),
+            $"Der Login {login.Email} ist gelöscht."),
+    };
+
+    private string ConfirmText(AdminLoginDto login)
+    {
+        var owned = login.Accounts.Where(a => a.Role == RoleTexts.Owner).Select(a => a.Name).ToList();
+        return confirmAction switch
+        {
+            ConfirmAction.Lock => $"{login.Email} sperren? Die Anmeldung ist sofort nicht mehr möglich, laufende Sitzungen enden spätestens nach 15 Minuten.",
+            ConfirmAction.GrantAdmin => $"{login.Email} zum System-Admin machen? Admins sehen und verwalten alle Logins, Konten und Geräte.",
+            ConfirmAction.RevokeAdmin => $"{login.Email} die Admin-Rolle entziehen?",
+            ConfirmAction.DeleteAccounts => $"Diese Konten von {login.Email} mit allen Geräten, Messwerten, Mitgliedern und Einladungen löschen: {string.Join(", ", owned)}? Das lässt sich nicht rückgängig machen.",
+            _ => $"Den Login {login.Email} endgültig löschen? Er verliert dabei auch den Zugriff auf fremde Konten.",
+        };
+    }
+
+    // Wie in Members.razor: Aufruf, Fehler übersetzen, Liste neu laden (auch nach Fehlern)
+    private async Task RunAsync(Func<Task<AuthResult>> action, string successMessage)
+    {
+        isBusy = true;
+        message = null;
+        errorMessage = null;
+        confirmLogin = null;
+        try
+        {
+            var result = await action();
+            if (result.Succeeded)
+                message = successMessage;
+            else
+                errorMessage = result.ErrorCode switch
+                {
+                    AdminLoginErrors.SelfAction => "Am eigenen Login ist das nicht möglich.",
+                    DeleteLoginErrors.OwnsAccounts => "Der Login ist noch Eigentümer von Konten. Löschen Sie zuerst diese Konten.",
+                    IotWeltApiClient.NotFoundErrorCode => "Den Login (oder seine Konten) gibt es nicht mehr.",
+                    AuthApiClient.ForbiddenErrorCode => "Dafür fehlt Ihnen die Admin-Rolle.",
+                    _ => "Das hat nicht geklappt.",
+                };
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            Navigation.NavigateToLogin();
+            return;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            Logger.LogWarning(ex, "Admin: API-Aufruf fehlgeschlagen");
+            errorMessage = "Das hat gerade nicht geklappt. Bitte versuchen Sie es später erneut.";
         }
         finally
         {
-            isLoading = false;
+            isBusy = false;
         }
+
+        await LoadAsync();
     }
 
-    // Die API löscht ALLE Konten dieses Eigentümers samt Geräten und Messdaten,
-    // der Login selbst bleibt bestehen.
-    private async Task DeleteCustomerAsync(CustomerRow row)
-    {
-        var ownerId = row.Profile.OwnerId;
-        var accountCount = customerRows.Count(r => r.Profile.OwnerId == ownerId);
-        var ok = await JS.InvokeAsync<bool>("confirm",
-            $"Alle Konten von \"{row.Profile.DisplayName ?? row.Profile.Email}\" ({accountCount}) mit allen Geräten und Messdaten löschen?\n" +
-            "Der Login selbst bleibt bestehen.\nDiese Aktion kann nicht rückgängig gemacht werden.");
-        if (!ok) return;
-
-        row.IsBusy = true;
-        errorMessage = null;
-        try
-        {
-            await Api.AdminDeleteCustomerAsync(ownerId);
-            customerRows.RemoveAll(r => r.Profile.OwnerId == ownerId);
-        }
-        catch (Exception ex)
-        {
-            errorMessage = ex.Message;
-            row.IsBusy = false;
-        }
-    }
+    // Admin-Sperre ist unbefristet (MaxValue); nach 5 Fehlversuchen sperrt Identity nur für kurze Zeit
+    private static string LockText(DateTimeOffset until) =>
+        until.Year >= 9999 ? "gesperrt" : $"gesperrt bis {until.ToLocalTime():dd.MM. HH:mm}";
 }

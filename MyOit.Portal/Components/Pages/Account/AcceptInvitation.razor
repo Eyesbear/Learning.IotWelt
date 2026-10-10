@@ -1,0 +1,273 @@
+@page "/account/accept-invitation"
+@attribute [ExcludeFromInteractiveRouting]
+
+@using System.ComponentModel.DataAnnotations
+@using System.Net
+@using System.Security.Claims
+@using IotWelt.Common.Auth
+@using IotWelt.Common.Members
+@using MyOit.Portal.Services.Auth
+@inject AuthApiClient AuthApi
+@inject IotWeltApiClient Api
+@inject TokenSessionManager Sessions
+@inject PortalSignInService PortalSignIn
+@inject NavigationManager Navigation
+@inject ILogger<AcceptInvitation> Logger
+
+@* Ziel des Einladungslinks (die API baut ihn mit ?token=…). Statisch gerendert (SSR): Beide Wege setzen
+   das Cookie — B2 meldet den neuen Login an, B3 wechselt danach in das neue Konto.
+   Das Token bleibt beim Absenden in der Query, weil die Formulare an die aktuelle URL gehen. *@
+
+<PageTitle>Einladung annehmen</PageTitle>
+
+<div class="row">
+    <div class="col-md-8 col-lg-6">
+        <h2 class="mb-4">Einladung annehmen</h2>
+
+        @if (unavailable)
+        {
+            <div class="alert alert-danger">Die Einladung kann gerade nicht geladen werden. Bitte versuchen Sie es später erneut.</div>
+        }
+        else if (info is null)
+        {
+            <div class="alert alert-danger">
+                Der Link ist ungültig. Bitte öffnen Sie den vollständigen Link aus der E-Mail.
+            </div>
+        }
+        else if (info.Status == InvitationStatus.Accepted)
+        {
+            <div class="alert alert-info">Diese Einladung wurde bereits angenommen.</div>
+            <a href="account/login" class="btn btn-primary">Anmelden</a>
+        }
+        else if (info.Status == InvitationStatus.Expired)
+        {
+            <div class="alert alert-warning">
+                Diese Einladung ist abgelaufen. Bitten Sie den Eigentümer des Kontos, Sie erneut einzuladen.
+            </div>
+        }
+        else
+        {
+            <p>
+                Sie wurden in das Konto <strong>@info.AccountName</strong> eingeladen —
+                als <strong>@RoleTexts.ToDisplay(info.Role)</strong>.
+                Die Einladung gilt für <strong>@info.Email</strong> bis @info.ExpiresAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm").
+            </p>
+
+            @if (errors is not null)
+            {
+                <div class="alert alert-danger">
+                    @foreach (var error in errors)
+                    {
+                        <div>@error</div>
+                    }
+                </div>
+            }
+
+            @if (signedInEmail is not null && !IsInvitedLogin)
+            {
+                <div class="alert alert-warning">
+                    Sie sind als <strong>@signedInEmail</strong> angemeldet, die Einladung gilt aber
+                    <strong>@info.Email</strong>. Melden Sie sich ab und öffnen Sie den Link danach erneut.
+                </div>
+                <form action="account/logout" method="post">
+                    <AntiforgeryToken />
+                    <button type="submit" class="btn btn-outline-secondary">Abmelden</button>
+                </form>
+            }
+            else if (signedInEmail is not null)
+            {
+                @* B3: angemeldet mit der eingeladenen Adresse *@
+                <form method="post" @formname="accept-invitation" @onsubmit="AcceptAsync">
+                    <AntiforgeryToken />
+                    <button type="submit" class="btn btn-primary">Einladung annehmen</button>
+                </form>
+            }
+            else if (info.HasLogin)
+            {
+                @* B3: Login existiert, aber nicht angemeldet → nach der Anmeldung zurück hierher *@
+                <p>Für diese Adresse gibt es bereits einen Login. Bitte melden Sie sich an, um die Einladung anzunehmen.</p>
+                <a href="@LoginUrl" class="btn btn-primary">Anmelden und annehmen</a>
+            }
+            else
+            {
+                @* B2: neuer Login — die E-Mail kommt aus der Einladung und gilt damit als bestätigt *@
+                <p>Legen Sie dafür einen Login an:</p>
+                <EditForm Model="Input" method="post" OnValidSubmit="RegisterAsync" FormName="register-from-invitation">
+                    <DataAnnotationsValidator />
+
+                    <div class="mb-3">
+                        <label for="email" class="form-label">E-Mail</label>
+                        <input id="email" value="@info.Email" class="form-control" autocomplete="username" readonly />
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="displayName" class="form-label">Anzeigename <span class="text-muted">(optional)</span></label>
+                        <InputText id="displayName" @bind-Value="Input.DisplayName" class="form-control" autocomplete="name" />
+                        <ValidationMessage For="() => Input.DisplayName" class="text-danger small" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Passwort</label>
+                        <InputText id="password" type="password" @bind-Value="Input.Password" class="form-control" autocomplete="new-password" />
+                        @* Spiegelt die Identity-Optionen der API (IotWelt.API/Program.cs) *@
+                        <div class="form-text">Mindestens 8 Zeichen, mit Groß- und Kleinbuchstaben und einer Ziffer.</div>
+                        <ValidationMessage For="() => Input.Password" class="text-danger small" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="confirmPassword" class="form-label">Passwort wiederholen</label>
+                        <InputText id="confirmPassword" type="password" @bind-Value="Input.ConfirmPassword" class="form-control" autocomplete="new-password" />
+                        <ValidationMessage For="() => Input.ConfirmPassword" class="text-danger small" />
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100">Login anlegen und annehmen</button>
+                </EditForm>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromQuery]
+    private string? Token { get; set; }
+
+    [SupplyParameterFromForm(FormName = "register-from-invitation")]
+    private RegisterInput Input { get; set; } = default!;
+
+    private InvitationInfoDto? info;
+    private bool unavailable;
+    private string? signedInEmail;
+    private IReadOnlyList<string>? errors;
+
+    private bool IsInvitedLogin =>
+        string.Equals(signedInEmail, info?.Email, StringComparison.OrdinalIgnoreCase);
+
+    private string LoginUrl =>
+        $"account/login?ReturnUrl={Uri.EscapeDataString($"/account/accept-invitation?token={Uri.EscapeDataString(Token!)}")}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+        if (HttpContext.User.Identity?.IsAuthenticated == true)
+            signedInEmail = HttpContext.User.FindFirst(ClaimTypes.Email)?.Value;
+
+        if (string.IsNullOrEmpty(Token))
+            return;
+
+        // Auch beim POST laden: Die Handler verlassen sich auf den aktuellen Status der Einladung
+        try
+        {
+            info = await AuthApi.GetInvitationAsync(Token, HttpContext.RequestAborted);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            Logger.LogWarning(ex, "Einladung: API nicht erreichbar");
+            unavailable = true;
+        }
+    }
+
+    // B2: neuen Login anlegen und gleich anmelden (Token-Paar kommt schon im eingeladenen Konto)
+    private async Task RegisterAsync()
+    {
+        if (info is not { Status: InvitationStatus.Open, HasLogin: false } || signedInEmail is not null)
+            return;
+
+        AuthResult<TokenResponse> result;
+        try
+        {
+            var displayName = string.IsNullOrWhiteSpace(Input.DisplayName) ? null : Input.DisplayName;
+            result = await AuthApi.RegisterFromInvitationAsync(Token!,
+                new RegisterFromInvitationRequest(Input.Password, displayName), HttpContext.RequestAborted);
+            if (result.Succeeded)
+                await PortalSignIn.SignInAsync(HttpContext, result.Value!, isPersistent: false);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            Logger.LogWarning(ex, "Einladung (neuer Login): API nicht erreichbar");
+            errors = ["Das ist gerade nicht möglich. Bitte versuchen Sie es später erneut."];
+            return;
+        }
+
+        if (!result.Succeeded)
+        {
+            errors = ToMessages(result);
+            return;
+        }
+
+        Navigation.NavigateTo("dashboard");
+    }
+
+    // B3: annehmen und gleich in das neue Konto wechseln
+    private async Task AcceptAsync()
+    {
+        if (info is not { Status: InvitationStatus.Open } || !IsInvitedLogin)
+            return;
+
+        AuthResult<AccountSummaryDto> result;
+        try
+        {
+            result = await Api.AcceptInvitationAsync(Token!, HttpContext.RequestAborted);
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            Navigation.NavigateTo(LoginUrl);
+            return;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            Logger.LogWarning(ex, "Einladung annehmen: API nicht erreichbar");
+            errors = ["Das ist gerade nicht möglich. Bitte versuchen Sie es später erneut."];
+            return;
+        }
+
+        if (!result.Succeeded)
+        {
+            errors = ToMessages(result);
+            return;
+        }
+
+        // Mitglied ist man jetzt — der Wechsel ist Komfort. Klappt er nicht, bleibt das alte Konto aktiv
+        // und das neue steht im Kontowechsler.
+        var sessionId = HttpContext.User.FindFirst(PortalClaims.SessionId)?.Value;
+        if (sessionId is not null)
+        {
+            var (status, tokens) = await Sessions.SwitchAccountAsync(sessionId, result.Value!.CustomerId);
+            if (status == AccountSwitchStatus.Switched)
+                await PortalSignIn.RenewCookieAsync(HttpContext, sessionId, tokens!);
+            else if (status == AccountSwitchStatus.SessionEnded)
+            {
+                Navigation.NavigateTo("account/login");
+                return;
+            }
+        }
+
+        Navigation.NavigateTo("dashboard");
+    }
+
+    private static IReadOnlyList<string> ToMessages(AuthResult result) => result.ErrorCode switch
+    {
+        MemberErrors.InvitationInvalid => ["Diese Einladung ist abgelaufen oder wurde bereits angenommen."],
+        MemberErrors.AlreadyMember => ["Sie sind bereits Mitglied dieses Kontos."],
+        MemberErrors.LoginExists => ["Für diese Adresse gibt es bereits einen Login. Bitte melden Sie sich an."],
+        AuthApiClient.ForbiddenErrorCode => ["Diese Einladung gilt einer anderen E-Mail-Adresse."],
+        IotWeltApiClient.NotFoundErrorCode => ["Der Link ist ungültig."],
+        _ => result.Errors is { Count: > 0 } ? result.Errors : ["Die Einladung konnte nicht angenommen werden."],
+    };
+
+    private sealed class RegisterInput
+    {
+        // Kein eigenes Konto (anders als bei /register) → Grenze ist AppUser.DisplayName, nicht Account.Name
+        [StringLength(200, ErrorMessage = "Der Anzeigename darf höchstens 200 Zeichen lang sein.")]
+        public string? DisplayName { get; set; }
+
+        [Required(ErrorMessage = "Bitte ein Passwort angeben.")]
+        public string Password { get; set; } = "";
+
+        [Required(ErrorMessage = "Bitte das Passwort wiederholen.")]
+        [Compare(nameof(Password), ErrorMessage = "Die Passwörter stimmen nicht überein.")]
+        public string ConfirmPassword { get; set; } = "";
+    }
+}

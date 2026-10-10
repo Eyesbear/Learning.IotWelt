@@ -1,0 +1,380 @@
+@page "/account/members"
+@attribute [Authorize]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+@using System.ComponentModel.DataAnnotations
+@using System.Net
+@using IotWelt.Common.Auth
+@using IotWelt.Common.Members
+@using MyOit.Portal.Services.Auth
+@inject IotWeltApiClient Api
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject ILogger<Members> Logger
+
+@* Mitglieder und Einladungen des aktiven Kontos (Stories B1, C1–C3, C5) — nur für den Owner.
+   Läuft im Circuit; nur die Übertragung (C5) ist ein echter Formular-POST, weil danach das Cookie
+   (Rolle im Konto) erneuert werden muss — siehe AccountEndpoints. *@
+
+<PageTitle>Mitglieder</PageTitle>
+
+<div class="container" style="max-width: 860px;">
+    <h2 class="mb-4">Mitglieder</h2>
+
+    @if (Transfer == "done")
+    {
+        <div class="alert alert-success">
+            Die Eigentümerschaft wurde übertragen. Sie sind in diesem Konto jetzt Bearbeiter.
+        </div>
+    }
+    else if (Transfer == "failed")
+    {
+        <div class="alert alert-danger">
+            Die Eigentümerschaft konnte nicht übertragen werden. Bitte prüfen Sie die Mitgliederliste und versuchen Sie es erneut.
+        </div>
+    }
+
+    @if (!isOwner)
+    {
+        <p class="text-muted">Die Mitglieder eines Kontos kann nur sein Eigentümer verwalten.</p>
+    }
+    else if (overview is null)
+    {
+        @if (loadError is not null)
+        {
+            <div class="alert alert-danger">@loadError</div>
+        }
+        else
+        {
+            <p>Wird geladen…</p>
+        }
+    }
+    else
+    {
+        @if (message is not null)
+        {
+            <div class="alert alert-success">@message</div>
+        }
+        @if (errors is not null)
+        {
+            <div class="alert alert-danger">
+                @foreach (var error in errors)
+                {
+                    <div>@error</div>
+                }
+            </div>
+        }
+
+        <div class="card mb-3">
+            <div class="card-body">
+                <h5 class="card-title">Person einladen</h5>
+                <p class="text-muted small">
+                    Die Person bekommt einen Link per E-Mail (7 Tage gültig) und sieht danach die Geräte dieses Kontos —
+                    ohne Ihre Zugangsdaten zu kennen.
+                </p>
+                <EditForm Model="inviteInput" OnValidSubmit="InviteAsync" FormName="invite-member">
+                    <DataAnnotationsValidator />
+                    <div class="row g-2 align-items-start">
+                        <div class="col-sm-6">
+                            <label for="inviteEmail" class="visually-hidden">E-Mail</label>
+                            <InputText id="inviteEmail" @bind-Value="inviteInput.Email" class="form-control" placeholder="E-Mail-Adresse" />
+                            <ValidationMessage For="() => inviteInput.Email" class="text-danger small" />
+                        </div>
+                        <div class="col-sm-3">
+                            <label for="inviteRole" class="visually-hidden">Rolle</label>
+                            <InputSelect id="inviteRole" @bind-Value="inviteInput.Role" class="form-select">
+                                <option value="@RoleTexts.Reader">@RoleTexts.ToDisplay(RoleTexts.Reader)</option>
+                                <option value="@RoleTexts.Editor">@RoleTexts.ToDisplay(RoleTexts.Editor)</option>
+                            </InputSelect>
+                        </div>
+                        <div class="col-sm-3">
+                            <button type="submit" class="btn btn-primary w-100" disabled="@isBusy">Einladen</button>
+                        </div>
+                    </div>
+                </EditForm>
+                <p class="text-muted small mt-2 mb-0">
+                    <strong>Leser</strong> sehen Geräte und Messwerte. <strong>Bearbeiter</strong> können zusätzlich Geräte anlegen und bearbeiten, aber nicht löschen.
+                </p>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-body">
+                <h5 class="card-title">Mitglieder</h5>
+                <div class="table-responsive">
+                    <table class="table align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Rolle</th>
+                                <th>Seit</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var member in overview.Members)
+                            {
+                                <tr>
+                                    <td>
+                                        @(member.DisplayName ?? member.Email)
+                                        @if (member.DisplayName is not null)
+                                        {
+                                            <div class="text-muted small">@member.Email</div>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (member.Role == RoleTexts.Owner)
+                                        {
+                                            @RoleTexts.ToDisplay(member.Role)
+                                        }
+                                        else
+                                        {
+                                            <label for="role-@member.UserId" class="visually-hidden">Rolle von @member.Email</label>
+                                            <select id="role-@member.UserId" class="form-select form-select-sm w-auto" disabled="@isBusy"
+                                                    value="@member.Role" @onchange="e => ChangeRoleAsync(member, e.Value?.ToString())">
+                                                <option value="@RoleTexts.Reader">@RoleTexts.ToDisplay(RoleTexts.Reader)</option>
+                                                <option value="@RoleTexts.Editor">@RoleTexts.ToDisplay(RoleTexts.Editor)</option>
+                                            </select>
+                                        }
+                                    </td>
+                                    <td>@member.JoinedAt.ToLocalTime().ToString("dd.MM.yyyy")</td>
+                                    <td class="text-end">
+                                        @if (member.Role != RoleTexts.Owner)
+                                        {
+                                            <button class="btn btn-sm btn-outline-secondary me-1" disabled="@isBusy"
+                                                    @onclick="() => AskConfirm(member, ConfirmAction.Transfer)">Zum Eigentümer machen</button>
+                                            <button class="btn btn-sm btn-outline-danger" disabled="@isBusy"
+                                                    @onclick="() => AskConfirm(member, ConfirmAction.Remove)">Entfernen</button>
+                                        }
+                                    </td>
+                                </tr>
+
+                                @if (confirmMember?.UserId == member.UserId)
+                                {
+                                    <tr>
+                                        <td colspan="4" class="bg-body-tertiary">
+                                            @if (confirmAction == ConfirmAction.Remove)
+                                            {
+                                                <p class="mb-2">
+                                                    <strong>@member.Email</strong> verliert den Zugriff auf dieses Konto
+                                                    (spätestens nach 15 Minuten).
+                                                </p>
+                                                <button class="btn btn-sm btn-danger me-1" disabled="@isBusy" @onclick="() => RemoveAsync(member)">Ja, entfernen</button>
+                                            }
+                                            else
+                                            {
+                                                <p class="mb-2">
+                                                    <strong>@member.Email</strong> wird Eigentümer dieses Kontos. Sie selbst werden Bearbeiter
+                                                    und können danach weder Mitglieder verwalten noch das Konto löschen.
+                                                </p>
+                                                @* Echter POST (kein @onsubmit): Der Endpoint erneuert danach Tokens und Cookie *@
+                                                <form action="account/transfer-ownership" method="post" class="d-inline">
+                                                    <AntiforgeryToken />
+                                                    <input type="hidden" name="userId" value="@member.UserId" />
+                                                    <button type="submit" class="btn btn-sm btn-warning me-1">Ja, übertragen</button>
+                                                </form>
+                                            }
+                                            <button class="btn btn-sm btn-outline-secondary" @onclick="CancelConfirm">Abbrechen</button>
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Offene Einladungen</h5>
+                @if (overview.Invitations.Count == 0)
+                {
+                    <p class="text-muted mb-0">Keine offenen Einladungen.</p>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>E-Mail</th>
+                                    <th>Rolle</th>
+                                    <th>Gültig bis</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var invitation in overview.Invitations)
+                                {
+                                    <tr>
+                                        <td>@invitation.Email</td>
+                                        <td>@RoleTexts.ToDisplay(invitation.Role)</td>
+                                        <td>
+                                            @invitation.ExpiresAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")
+                                            @if (invitation.IsExpired)
+                                            {
+                                                <span class="badge text-bg-secondary ms-1">abgelaufen</span>
+                                            }
+                                        </td>
+                                        <td class="text-end">
+                                            @if (invitation.IsExpired)
+                                            {
+                                                <button class="btn btn-sm btn-outline-primary me-1" disabled="@isBusy"
+                                                        @onclick="() => ReinviteAsync(invitation)">Erneut einladen</button>
+                                            }
+                                            <button class="btn btn-sm btn-outline-danger" disabled="@isBusy"
+                                                    @onclick="() => RevokeAsync(invitation)">Zurückziehen</button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    // Nach dem Redirect von /account/transfer-ownership: "done" oder "failed"
+    [SupplyParameterFromQuery]
+    private string? Transfer { get; set; }
+
+    private bool isOwner;
+    private MembersOverviewDto? overview;
+    private string? loadError;
+    private string? message;
+    private IReadOnlyList<string>? errors;
+    private bool isBusy;
+    private InviteInput inviteInput = new();
+    private MemberDto? confirmMember;
+    private ConfirmAction confirmAction;
+
+    private enum ConfirmAction { Remove, Transfer }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Rolle aus dem Cookie nur für die Anzeige — ob wirklich Owner, entscheidet die API (sonst 403)
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        isOwner = authState.User.FindFirst(PortalClaims.AccountRole)?.Value == RoleTexts.Owner;
+        if (isOwner)
+            await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            overview = await Api.GetMembersAsync();
+            loadError = null;
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            Navigation.NavigateToLogin();
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+        {
+            // Cookie sagt noch Owner, das Token nicht mehr (z. B. in anderem Tab übertragen)
+            isOwner = false;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            Logger.LogWarning(ex, "Mitglieder nicht ladbar");
+            loadError = "Die Mitglieder konnten gerade nicht geladen werden. Bitte versuchen Sie es später erneut.";
+        }
+    }
+
+    private Task InviteAsync() =>
+        RunAsync(() => Api.InviteMemberAsync(inviteInput.Email, inviteInput.Role),
+            $"Einladung an {inviteInput.Email} verschickt.",
+            onSuccess: () => inviteInput = new());
+
+    private Task ReinviteAsync(InvitationDto invitation) =>
+        RunAsync(() => Api.InviteMemberAsync(invitation.Email, invitation.Role),
+            $"Neue Einladung an {invitation.Email} verschickt.");
+
+    private Task RevokeAsync(InvitationDto invitation) =>
+        RunAsync(() => Api.RevokeInvitationAsync(invitation.Id),
+            $"Einladung an {invitation.Email} zurückgezogen.");
+
+    private async Task ChangeRoleAsync(MemberDto member, string? role)
+    {
+        if (role is null || role == member.Role)
+            return;
+        await RunAsync(() => Api.ChangeMemberRoleAsync(member.UserId, role),
+            $"{member.Email} ist jetzt {RoleTexts.ToDisplay(role)} (wirkt spätestens nach 15 Minuten).");
+    }
+
+    private Task RemoveAsync(MemberDto member) =>
+        RunAsync(() => Api.RemoveMemberAsync(member.UserId),
+            $"{member.Email} wurde entfernt.");
+
+    private void AskConfirm(MemberDto member, ConfirmAction action)
+    {
+        confirmMember = member;
+        confirmAction = action;
+        message = null;
+        errors = null;
+    }
+
+    private void CancelConfirm() => confirmMember = null;
+
+    // Gemeinsamer Ablauf: API-Aufruf, Fehler übersetzen, danach Liste neu laden (auch bei Fehlern —
+    // dann sieht man z. B., dass ein Mitglied in einem anderen Tab schon entfernt wurde)
+    private async Task RunAsync(Func<Task<AuthResult>> action, string successMessage, Action? onSuccess = null)
+    {
+        isBusy = true;
+        message = null;
+        errors = null;
+        confirmMember = null;
+        try
+        {
+            var result = await action();
+            if (result.Succeeded)
+            {
+                message = successMessage;
+                onSuccess?.Invoke();
+            }
+            else
+            {
+                errors = ToMessages(result);
+            }
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            Navigation.NavigateToLogin();
+            return;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            Logger.LogWarning(ex, "Mitgliederverwaltung: API-Aufruf fehlgeschlagen");
+            errors = ["Das hat gerade nicht geklappt. Bitte versuchen Sie es später erneut."];
+        }
+        finally
+        {
+            isBusy = false;
+        }
+
+        await LoadAsync();
+    }
+
+    private static IReadOnlyList<string> ToMessages(AuthResult result) => result.ErrorCode switch
+    {
+        MemberErrors.AlreadyMember => ["Diese Person ist bereits Mitglied des Kontos."],
+        MemberErrors.OwnerMembership => ["Die Rolle des Eigentümers lässt sich nur per Übertragung ändern."],
+        MemberErrors.NotOwner or AuthApiClient.ForbiddenErrorCode => ["Sie sind nicht (mehr) Eigentümer dieses Kontos."],
+        IotWeltApiClient.NotFoundErrorCode => ["Dieser Eintrag existiert nicht mehr."],
+        _ => result.Errors is { Count: > 0 } ? result.Errors : ["Das hat nicht geklappt."],
+    };
+
+    private sealed class InviteInput
+    {
+        [Required(ErrorMessage = "Bitte die E-Mail-Adresse angeben.")]
+        [EmailAddress(ErrorMessage = "Das ist keine gültige E-Mail-Adresse.")]
+        public string Email { get; set; } = "";
+
+        public string Role { get; set; } = RoleTexts.Reader;
+    }
+}
