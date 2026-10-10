@@ -1,6 +1,6 @@
 @page "/dashboard"
 @inject NavigationManager Navigation
-@using Microsoft.Identity.Web
+@using MyOit.Portal.Services.Auth
 @using Microsoft.Extensions.Options
 @using MyOit.Portal.Models
 @inject IotWeltApiClient Api
@@ -100,13 +100,10 @@ else
             devices = await Api.GetDashboardAsync();
             lastRefresh = DateTime.UtcNow;
         }
-        catch (MicrosoftIdentityWebChallengeUserException)
-        {
-            Navigation.NavigateTo("MicrosoftIdentity/Account/SignIn", forceLoad: true);
-        }
         catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
         {
-            Navigation.NavigateTo("MicrosoftIdentity/Account/SignIn", forceLoad: true);
+            // Sitzung abgelaufen oder widerrufen → neu anmelden
+            Navigation.NavigateToLogin();
         }
     }
 

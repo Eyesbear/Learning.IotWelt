@@ -9,6 +9,10 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 ## [Unreleased] — v2.0 im Umbau
 
 ### Added
+- **Portal meldet sich an der eigenen API an** (Cookie statt Entra ID): Login, Logout, „Angemeldet bleiben“; im Cookie steht nur eine Sitzungs-ID, Access- und Refresh-Token bleiben serverseitig im Portal und werden vor Ablauf automatisch erneuert (pro Sitzung serialisiert, damit kein Refresh-Token doppelt verwendet wird)
+- Portal-Seiten für **Registrierung mit E-Mail-Bestätigung** und **Passwort vergessen/zurücksetzen** (`/account/...`); Identity-Fehler der API erscheinen auf Deutsch
+- **Kontowechsler** im Kopfbereich des Portals, sichtbar bei Logins mit mehreren Konten
+- Abgelaufene oder widerrufene Anmeldung führt in Dashboard, Geräten, Gerätedetail und Profil zurück zum Login (mit Rücksprung auf die Seite)
 - **Einladungen** (Stories B1–B3): Owner lädt per E-Mail als Editor/Reader ein (`POST /api/members/invitations`), Link 7 Tage gültig und nur einmal nutzbar, Token nur als SHA-256-Hash gespeichert. Annahme mit vorhandenem Login (`POST /api/invitations/{token}/accept`, E-Mail muss passen) oder mit neuem Login ohne eigenes Konto (`POST /api/invitations/{token}/register`, liefert direkt ein Token-Paar)
 - **Mitgliederverwaltung** für Owner (`/api/members`, Stories C1–C5): Mitglieder und offene Einladungen anzeigen, Rolle ändern, Mitglied entfernen, Ownership übertragen, Konto löschen (mit Geräten, Messwerten, Mitgliedschaften, Einladungen)
 - **Eigenen Login löschen** (`DELETE /api/auth/me`, Story A4) mit Passwortbestätigung; abgelehnt, solange der Login Owner eines Kontos ist
@@ -25,6 +29,7 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 - `docs/user-stories/benutzerverwaltung.md`: User Stories für Konto/Login/Mitgliedschaft (Owner/Editor/Reader, Einladungen, Kontowechsel)
 
 ### Changed
+- Admin-Benutzerverwaltung im Portal zeigt die Kundenliste über die API statt über Microsoft Graph; Löschen entfernt die Konten eines Eigentümers samt Geräten, der Login selbst bleibt bestehen
 - Token-Erzeugung und -Hash aus `TokenService` nach `SecureToken` ausgelagert (gemeinsam für Refresh-Tokens und Einladungen); Löschlogik für Konten nach `AccountService.DeleteAsync` (genutzt von C4 und `DELETE /api/admin/customers/{ownerId}`, Verhalten unverändert)
 - **Migrationen neu aufgesetzt** (`InitialV2`) — alte Stände nur noch über Tag `v0.4.1-azure`; lokale DB neu erstellen
 - `CustomerProfiles` ersetzt durch `Accounts` + `AccountMemberships`; `CustomerService` ersetzt durch `CurrentAccount` (liest das aktive Konto aus dem Token)
@@ -32,6 +37,8 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 - `.claude/settings.local.json` nicht mehr versioniert
 
 ### Removed
+- Entra-ID-Anmeldung und Microsoft Graph im Portal (`Microsoft.Identity.Web(.UI)`, `Microsoft.Graph`, `GraphUserService`, Section `AzureAd`, `IotWeltApi:Scopes`, Testseite `/auth`) sowie ungenutzte EF-Core-Pakete im Portal
+- Demoseiten Counter und Weather aus der Projektvorlage
 - Entra-ID-Validierung in der API (`Microsoft.Identity.Web`, Section `AzureAd`)
 
 ### Fixed

@@ -1,0 +1,113 @@
+@page "/account/login"
+@attribute [ExcludeFromInteractiveRouting]
+
+@using System.ComponentModel.DataAnnotations
+@using IotWelt.Common.Auth
+@using MyOit.Portal.Services.Auth
+@inject AuthApiClient AuthApi
+@inject PortalSignInService PortalSignIn
+@inject NavigationManager Navigation
+@inject ILogger<Login> Logger
+
+@* Statisch gerendert (SSR): Das Cookie lässt sich nur in einem echten HTTP-Request setzen, nicht im Circuit *@
+
+<PageTitle>Anmelden</PageTitle>
+
+<div class="row">
+    <div class="col-md-6 col-lg-4">
+        <h2 class="mb-4">Anmelden</h2>
+
+        @if (errorMessage is not null)
+        {
+            <div class="alert alert-danger">@errorMessage</div>
+        }
+
+        <EditForm Model="Input" method="post" OnValidSubmit="LoginAsync" FormName="login">
+            <DataAnnotationsValidator />
+
+            <div class="mb-3">
+                <label for="email" class="form-label">E-Mail</label>
+                <InputText id="email" @bind-Value="Input.Email" class="form-control" autocomplete="username" />
+                <ValidationMessage For="() => Input.Email" class="text-danger small" />
+            </div>
+
+            <div class="mb-3">
+                <label for="password" class="form-label">Passwort</label>
+                <InputText id="password" type="password" @bind-Value="Input.Password" class="form-control" autocomplete="current-password" />
+                <ValidationMessage For="() => Input.Password" class="text-danger small" />
+            </div>
+
+            <div class="form-check mb-3">
+                <InputCheckbox id="remember" @bind-Value="Input.RememberMe" class="form-check-input" />
+                <label for="remember" class="form-check-label">Angemeldet bleiben</label>
+            </div>
+
+            <button type="submit" class="btn btn-primary w-100">Anmelden</button>
+        </EditForm>
+
+        <p class="mt-3 mb-1"><a href="account/forgot-password">Passwort vergessen?</a></p>
+        <p>Noch kein Konto? <a href="account/register">Konto anlegen</a></p>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm]
+    private LoginInput Input { get; set; } = default!;
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    private string? errorMessage;
+
+    // Beim POST setzt das Formular-Binding Input; beim ersten Aufruf (GET) gibt es noch keins
+    protected override void OnInitialized() => Input ??= new();
+
+    private async Task LoginAsync()
+    {
+        AuthResult<TokenResponse> result;
+        try
+        {
+            result = await AuthApi.LoginAsync(Input.Email, Input.Password, HttpContext.RequestAborted);
+            if (result.Succeeded)
+                await PortalSignIn.SignInAsync(HttpContext, result.Value!, Input.RememberMe);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            Logger.LogWarning(ex, "Anmeldung: API nicht erreichbar");
+            errorMessage = "Die Anmeldung ist gerade nicht möglich. Bitte versuchen Sie es später erneut.";
+            return;
+        }
+
+        if (!result.Succeeded)
+        {
+            errorMessage = result.ErrorCode switch
+            {
+                AuthErrors.LockedOut => "Zu viele Fehlversuche – die Anmeldung ist vorübergehend gesperrt. Bitte später erneut versuchen.",
+                AuthErrors.EmailNotConfirmed => "Bitte bestätigen Sie zuerst Ihre E-Mail-Adresse über den Link in der Bestätigungsmail.",
+                _ => "E-Mail oder Passwort ist falsch.",
+            };
+            return;
+        }
+
+        Navigation.NavigateTo(IsLocalUrl(ReturnUrl) ? ReturnUrl! : "/");
+    }
+
+    // Nur Pfade innerhalb des Portals — sonst ließe sich der Login als Sprungbrett auf fremde Seiten missbrauchen
+    private static bool IsLocalUrl(string? url) =>
+        !string.IsNullOrEmpty(url) && url[0] == '/' && (url.Length == 1 || (url[1] != '/' && url[1] != '\\'));
+
+    private sealed class LoginInput
+    {
+        [Required(ErrorMessage = "Bitte die E-Mail-Adresse angeben.")]
+        [EmailAddress(ErrorMessage = "Das ist keine gültige E-Mail-Adresse.")]
+        public string Email { get; set; } = "";
+
+        [Required(ErrorMessage = "Bitte das Passwort angeben.")]
+        public string Password { get; set; } = "";
+
+        public bool RememberMe { get; set; }
+    }
+}

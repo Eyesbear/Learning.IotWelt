@@ -1,0 +1,129 @@
+@page "/account/register"
+@attribute [ExcludeFromInteractiveRouting]
+
+@using System.ComponentModel.DataAnnotations
+@using IotWelt.Common.Auth
+@using MyOit.Portal.Services.Auth
+@inject AuthApiClient AuthApi
+@inject ILogger<Register> Logger
+
+@* Statisch gerendert (SSR) wie der Login — ein einfaches Formular ohne Circuit *@
+
+<PageTitle>Konto anlegen</PageTitle>
+
+<div class="row">
+    <div class="col-md-6 col-lg-4">
+        <h2 class="mb-4">Konto anlegen</h2>
+
+        @if (registered)
+        {
+            <div class="alert alert-success">
+                Fast geschafft: Wir haben Ihnen eine E-Mail an <strong>@Input.Email</strong> geschickt.
+                Bitte bestätigen Sie Ihre Adresse über den Link darin, danach können Sie sich anmelden.
+            </div>
+            <a href="account/login">Zur Anmeldung</a>
+        }
+        else
+        {
+            @if (errors is not null)
+            {
+                <div class="alert alert-danger">
+                    @foreach (var error in errors)
+                    {
+                        <div>@error</div>
+                    }
+                </div>
+            }
+
+            <EditForm Model="Input" method="post" OnValidSubmit="RegisterAsync" FormName="register">
+                <DataAnnotationsValidator />
+
+                <div class="mb-3">
+                    <label for="email" class="form-label">E-Mail</label>
+                    <InputText id="email" @bind-Value="Input.Email" class="form-control" autocomplete="username" />
+                    <ValidationMessage For="() => Input.Email" class="text-danger small" />
+                </div>
+
+                <div class="mb-3">
+                    <label for="displayName" class="form-label">Anzeigename <span class="text-muted">(optional)</span></label>
+                    <InputText id="displayName" @bind-Value="Input.DisplayName" class="form-control" autocomplete="name" />
+                    <ValidationMessage For="() => Input.DisplayName" class="text-danger small" />
+                </div>
+
+                <div class="mb-3">
+                    <label for="password" class="form-label">Passwort</label>
+                    <InputText id="password" type="password" @bind-Value="Input.Password" class="form-control" autocomplete="new-password" />
+                    @* Spiegelt die Identity-Optionen der API (IotWelt.API/Program.cs) *@
+                    <div class="form-text">Mindestens 8 Zeichen, mit Groß- und Kleinbuchstaben und einer Ziffer.</div>
+                    <ValidationMessage For="() => Input.Password" class="text-danger small" />
+                </div>
+
+                <div class="mb-3">
+                    <label for="confirmPassword" class="form-label">Passwort wiederholen</label>
+                    <InputText id="confirmPassword" type="password" @bind-Value="Input.ConfirmPassword" class="form-control" autocomplete="new-password" />
+                    <ValidationMessage For="() => Input.ConfirmPassword" class="text-danger small" />
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100">Konto anlegen</button>
+            </EditForm>
+
+            <p class="mt-3">Schon registriert? <a href="account/login">Anmelden</a></p>
+        }
+    </div>
+</div>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm]
+    private RegisterInput Input { get; set; } = default!;
+
+    private IReadOnlyList<string>? errors;
+    private bool registered;
+
+    // Beim POST setzt das Formular-Binding Input; beim ersten Aufruf (GET) gibt es noch keins
+    protected override void OnInitialized() => Input ??= new();
+
+    private async Task RegisterAsync()
+    {
+        AuthResult result;
+        try
+        {
+            var request = new RegisterRequest(Input.Email, Input.Password, Input.DisplayName);
+            result = await AuthApi.RegisterAsync(request, HttpContext.RequestAborted);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            Logger.LogWarning(ex, "Registrierung: API nicht erreichbar");
+            errors = ["Die Registrierung ist gerade nicht möglich. Bitte versuchen Sie es später erneut."];
+            return;
+        }
+
+        if (!result.Succeeded)
+        {
+            errors = result.Errors is { Count: > 0 } ? result.Errors : ["Die Registrierung ist fehlgeschlagen."];
+            return;
+        }
+
+        registered = true;
+    }
+
+    private sealed class RegisterInput
+    {
+        [Required(ErrorMessage = "Bitte die E-Mail-Adresse angeben.")]
+        [EmailAddress(ErrorMessage = "Das ist keine gültige E-Mail-Adresse.")]
+        public string Email { get; set; } = "";
+
+        // Die API übernimmt ihn als Kontonamen (Spalte Account.Name, nvarchar(100))
+        [StringLength(100,ErrorMessage = "Der Anzeigename darf höchstens 100 Zeichen lang sein.")]
+        public string? DisplayName { get; set; }
+
+        [Required(ErrorMessage = "Bitte ein Passwort angeben.")]
+        public string Password { get; set; } = "";
+
+        [Required(ErrorMessage = "Bitte das Passwort wiederholen.")]
+        [Compare(nameof(Password), ErrorMessage = "Die Passwörter stimmen nicht überein.")]
+        public string ConfirmPassword { get; set; } = "";
+    }
+}
