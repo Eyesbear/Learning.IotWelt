@@ -40,7 +40,7 @@
             <div class="card-body">
                 <h5 class="card-title">Konto löschen</h5>
 
-                @if (activeAccount is { Role: "Owner" })
+                @if (activeAccount is { Role: RoleTexts.Owner })
                 {
                     <p>
                         Das Konto <strong>@activeAccount.Name</strong> wird mit allen Geräten, Messwerten,
@@ -203,14 +203,14 @@
         }
 
         activeAccount = accounts.FirstOrDefault(a => a.IsActive);
-        var owned = accounts.Where(a => a.Role == "Owner").ToList();
+        var owned = accounts.Where(a => a.Role == RoleTexts.Owner).ToList();
         ownedAccountCount = owned.Count;
         otherOwnedAccounts = owned.Where(a => !a.IsActive).ToList();
     }
 
     private async Task DeleteAccountAsync()
     {
-        if (accounts is null || activeAccount is not { Role: "Owner" })
+        if (accounts is null || activeAccount is not { Role: RoleTexts.Owner })
             return;
 
         AuthResult result;
