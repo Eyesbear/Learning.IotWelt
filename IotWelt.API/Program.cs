@@ -1,5 +1,6 @@
 using IotWelt.API.Data;
 using IotWelt.API.Models;
+using IotWelt.API.OpenApi;
 using IotWelt.API.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
@@ -15,7 +16,7 @@ builder.AddSqlServerDbContext<AppDbContext>("iotweltdb");
 
 builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options => options.AddDocumentTransformer<BearerSecuritySchemeTransformer>());
 
 builder.Services.AddOptions<JwtOptions>().BindConfiguration(JwtOptions.SectionName);
 builder.Services.AddOptions<AppLinkOptions>().BindConfiguration(AppLinkOptions.SectionName);
@@ -78,7 +79,7 @@ app.MapDefaultEndpoints();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
-    app.MapScalarApiReference();
+    app.MapScalarApiReference(options => options.AddPreferredSecuritySchemes(BearerSecuritySchemeTransformer.SchemeName));
 }
 
 app.UseHttpsRedirection();
