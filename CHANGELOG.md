@@ -35,13 +35,14 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 ### Changed
 - **JWT-Signaturschlüssel kommt lokal aus dem AppHost**: Aspire-Parameter `jwt-signing-key` (geheim, User-Secrets des AppHost unter `Parameters:jwt-signing-key`), an die API als `Jwt__SigningKey` weitergereicht — derselbe Weg wie später per Env-Var in Compose; das Portal bekommt keine Datenbank-Referenz mehr
 - **Admin-Benutzerverwaltung** im Portal (`/admin/users`) arbeitet auf den Logins statt auf Microsoft Graph (Stories E1–E3): Logins mit Konten, Rollen und Status, sperren/entsperren, Admin-Rolle vergeben/entziehen, Konten eines Eigentümers löschen, Login löschen (erst wenn er keine Konten mehr besitzt); am eigenen Login sind diese Aktionen ausgeblendet. Abgelaufene Anmeldung führt zum Login
-- Token-Erzeugung und -Hash aus `TokenService` nach `SecureToken` ausgelagert (gemeinsam für Refresh-Tokens und Einladungen); Löschlogik für Konten nach `AccountService.DeleteAsync` (genutzt von C4 und `DELETE /api/admin/customers/{ownerId}`, Verhalten unverändert)
+- Token-Erzeugung und -Hash aus `TokenService` nach `SecureToken` ausgelagert (gemeinsam für Refresh-Tokens und Einladungen); Löschlogik für Konten nach `AccountService.DeleteAsync` (genutzt von C4 und dem Admin-Löschen der Konten eines Logins, Verhalten unverändert)
 - **Migrationen neu aufgesetzt** (`InitialV2`) — alte Stände nur noch über Tag `v0.4.1-azure`; lokale DB neu erstellen
 - `CustomerProfiles` ersetzt durch `Accounts` + `AccountMemberships`; `CustomerService` ersetzt durch `CurrentAccount` (liest das aktive Konto aus dem Token)
 - `CLAUDE.md` für die v2.0-Zielarchitektur neu geschrieben (kein Azure, API als Token-Aussteller, Definition of Done, Konventionen)
 - `.claude/settings.local.json` nicht mehr versioniert
 
 ### Removed
+- `GET /api/admin/customers` und `CustomerProfileDto` (ungenutzt seit der Login-Verwaltung); das Löschen der Konten eines Logins heißt jetzt `DELETE /api/admin/logins/{userId}/accounts` statt `DELETE /api/admin/customers/{ownerId}`
 - Entra-ID-Anmeldung und Microsoft Graph im Portal (`Microsoft.Identity.Web(.UI)`, `Microsoft.Graph`, `GraphUserService`, Section `AzureAd`, `IotWeltApi:Scopes`, Testseite `/auth`) sowie ungenutzte EF-Core-Pakete im Portal
 - Demoseiten Counter und Weather aus der Projektvorlage
 - Entra-ID-Validierung in der API (`Microsoft.Identity.Web`, Section `AzureAd`)

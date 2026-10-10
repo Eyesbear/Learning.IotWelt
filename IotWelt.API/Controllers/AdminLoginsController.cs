@@ -18,6 +18,7 @@ public class AdminLoginsController(
     AppDbContext db,
     UserManager<AppUser> users,
     CurrentAccount current,
+    AccountService accountService,
     TokenService tokens,
     TimeProvider time) : ControllerBase
 {
@@ -115,7 +116,7 @@ public class AdminLoginsController(
     }
 
     // Login löschen. Wie bei A4 abgelehnt, solange der Login Owner eines Kontos ist —
-    // Konten löscht der Admin vorher bewusst (DELETE /api/admin/customers/{ownerId}).
+    // Konten löscht der Admin vorher bewusst (DELETE /api/admin/logins/{userId}/accounts).
     [HttpDelete("{userId}")]
     public async Task<IActionResult> Delete(string userId)
     {
@@ -131,6 +132,21 @@ public class AdminLoginsController(
 
         var result = await users.DeleteAsync(user);
         return result.Succeeded ? NoContent() : Problem(string.Join("; ", result.Errors.Select(e => e.Description)));
+    }
+
+    // Löscht alle Konten, deren Owner dieser Login ist, samt Geräten, Messwerten, Mitgliedschaften und
+    // Einladungen (wie C4). Der Login bleibt bestehen. 404, wenn er keine Konten besitzt.
+    [HttpDelete("{userId}/accounts")]
+    public async Task<IActionResult> DeleteOwnedAccounts(string userId)
+    {
+        var accounts = await db.Accounts
+            .Where(a => a.Memberships.Any(m => m.UserId == userId && m.Role == AccountRole.Owner))
+            .ToListAsync();
+        if (accounts.Count == 0)
+            return NotFound();
+
+        await accountService.DeleteAsync(accounts);
+        return NoContent();
     }
 
     private ObjectResult SelfAction() =>

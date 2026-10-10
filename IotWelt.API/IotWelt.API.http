@@ -99,6 +99,10 @@ Authorization: Bearer {{accessToken}}
 DELETE {{IotWelt.API_HostAddress}}/api/admin/logins/{{userId}}/admin
 Authorization: Bearer {{accessToken}}
 
+### Konten eines Logins löschen (alle, deren Owner er ist — samt Geräten); der Login bleibt
+DELETE {{IotWelt.API_HostAddress}}/api/admin/logins/{{userId}}/accounts
+Authorization: Bearer {{accessToken}}
+
 ### Login löschen (nicht Owner eines Kontos, nicht man selbst)
 DELETE {{IotWelt.API_HostAddress}}/api/admin/logins/{{userId}}
 Authorization: Bearer {{accessToken}}

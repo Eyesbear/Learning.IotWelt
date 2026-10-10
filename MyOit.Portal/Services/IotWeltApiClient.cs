@@ -180,7 +180,7 @@ public class IotWeltApiClient([FromKeyedServices(IotWeltApiClient.HttpClientName
     // Löscht ALLE Konten, deren Owner der Login ist, samt Geräten und Messwerten — der Login bleibt
     public async Task<AuthResult> AdminDeleteOwnedAccountsAsync(string ownerId)
     {
-        var response = await http.DeleteAsync($"/api/admin/customers/{Uri.EscapeDataString(ownerId)}");
+        var response = await http.DeleteAsync($"/api/admin/logins/{Uri.EscapeDataString(ownerId)}/accounts");
         return await ToResultAsync(response, default);
     }
 

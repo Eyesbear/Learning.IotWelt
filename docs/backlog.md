@@ -18,9 +18,6 @@ Erledigte Punkte werden gestrichen und im CHANGELOG erwähnt.
 - **E-Mail > 100 Zeichen ohne Anzeigenamen → 500** *(aus 1d)* — `Account.Name` ist `nvarchar(100)`.
 - **Reset-Code prüfen ohne Verbrauch** fehlt *(aus 1d)* — die Reset-Seite merkt erst beim Absenden,
   dass der Link abgelaufen ist.
-- **`GET /api/admin/customers` und `CustomerProfileDto` ungenutzt** *(seit 1e)* — das Portal nutzt `/api/admin/logins`.
-  Endpoint, DTO und zugehörige Tests in 1f entfernen. `DELETE /api/admin/customers/{ownerId}` wird weiter gebraucht
-  (Konten eines Logins löschen, bevor er gelöscht werden kann) — ggf. nach `/api/admin/logins/{userId}/accounts` verschieben.
 
 ## Portal
 
@@ -28,7 +25,3 @@ Erledigte Punkte werden gestrichen und im CHANGELOG erwähnt.
   Braucht eine Hinweisseite („Sie gehören keinem Konto an“) und den API-Endpoint oben.
 - **Kein Portal-Testprojekt** *(aus 1d)* — z. B. bUnit für Komponenten, `WebApplicationFactory` für die
   Formular-Endpoints (CSRF-Schutz wurde bisher nur manuell geprüft).
-
-## AppHost
-
-- `.WithReference(sql)` für das Portal ist überflüssig *(aus 1d)* — Mini-PR.
