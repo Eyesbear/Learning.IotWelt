@@ -1,4 +1,5 @@
 using IotWelt.Common;
+using IotWelt.Common.Auth;
 using System.Net.Http.Json;
 
 namespace MyOit.Portal.Services;
@@ -8,6 +9,12 @@ namespace MyOit.Portal.Services;
 public class IotWeltApiClient([FromKeyedServices(IotWeltApiClient.HttpClientName)] HttpClient http)
 {
     public const string HttpClientName = "IotWeltApi";
+
+    // Alle Konten des Logins für den Kontowechsler (IsActive = das Konto der aktuellen Sitzung)
+    public async Task<List<AccountSummaryDto>> GetMyAccountsAsync()
+    {
+        return await http.GetFromJsonAsync<List<AccountSummaryDto>>("/api/auth/accounts") ?? [];
+    }
 
     public async Task<List<DeviceDashboardDto>> GetDashboardAsync()
     {

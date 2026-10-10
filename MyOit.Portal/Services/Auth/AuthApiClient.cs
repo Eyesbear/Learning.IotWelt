@@ -17,6 +17,9 @@ public sealed record AuthResult<T>(T? Value, bool Succeeded, string? ErrorCode =
 // weil diese Aufrufe auch außerhalb von Komponenten (Login-Seite, Refresh, Logout) stattfinden.
 public sealed class AuthApiClient(HttpClient http)
 {
+    // Kein Code der API (die antwortet bei 403 ohne Body), sondern vom Portal vergeben
+    public const string ForbiddenErrorCode = "forbidden";
+
     // Legt Login + eigenes Konto an; die API verschickt danach die Bestätigungsmail
     public async Task<AuthResult> RegisterAsync(RegisterRequest request, CancellationToken ct = default)
     {
@@ -63,6 +66,20 @@ public sealed class AuthApiClient(HttpClient http)
         response.EnsureSuccessStatusCode();
     }
 
+    // Verbraucht das Refresh-Token — nur unter der Sitzungssperre aufrufen (TokenSessionManager).
+    // 403 (fremdes Konto) kommt, bevor die API das Token anfasst; es bleibt dann gültig.
+    public async Task<AuthResult<TokenResponse>> SwitchAccountAsync(
+        string accessToken, string customerId, string refreshToken, CancellationToken ct = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth/switch-account")
+        {
+            Content = JsonContent.Create(new SwitchAccountRequest(customerId, refreshToken)),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        var response = await http.SendAsync(request, ct);
+        return await ReadTokenResultAsync(response, ct);
+    }
+
     public async Task<MeResponse> GetMeAsync(string accessToken, CancellationToken ct = default)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, "/api/auth/me");
@@ -98,8 +115,14 @@ public sealed class AuthApiClient(HttpClient http)
             // Leerer oder kein JSON-Body (z. B. Forbid()) — dann gibt es nur den Statuscode
         }
 
-        // Nur bei 401 steht ein Fehlercode im title; bei 400 ist er der allgemeine Validierungstext
-        var errorCode = response.StatusCode == HttpStatusCode.Unauthorized ? problem?.Title : null;
+        // Nur bei 401 steht ein Fehlercode im title; bei 400 ist er der allgemeine Validierungstext.
+        // 403 (Forbid()) hat keinen Body — dafür ein eigener Code des Portals.
+        var errorCode = response.StatusCode switch
+        {
+            HttpStatusCode.Unauthorized => problem?.Title,
+            HttpStatusCode.Forbidden => ForbiddenErrorCode,
+            _ => null,
+        };
         // Schlüssel sind bei Identity-Fehlern deren Code (z. B. PasswordTooShort) → deutscher Text, sonst die API-Meldung.
         // Distinct: Bei E-Mail = Benutzername meldet Identity DuplicateEmail und DuplicateUserName.
         var errors = problem?.Errors

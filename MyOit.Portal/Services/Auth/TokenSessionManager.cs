@@ -11,7 +11,7 @@ namespace MyOit.Portal.Services.Auth;
 // Warum die Sperre? Das Refresh-Token ist nur EINMAL verwendbar. Erneuern zwei Anfragen derselben
 // Sitzung gleichzeitig, schickt die zweite ein bereits verbrauchtes Token — die API wertet das als
 // Diebstahl und widerruft ALLE Sitzungen des Logins. Deshalb läuft jede Verwendung des Refresh-Tokens
-// (Refresh, Logout, später Kontowechsel) pro Sitzung nacheinander.
+// (Refresh, Logout, Kontowechsel) pro Sitzung nacheinander.
 public sealed class TokenSessionManager(
     ITokenStore store,
     IServiceScopeFactory scopeFactory,
@@ -56,6 +56,54 @@ public sealed class TokenSessionManager(
             return await RefreshAsync(sessionId, tokens.RefreshToken);
         });
     }
+
+    // Kontowechsel: Die API stellt ein neues Token-Paar für das Zielkonto aus und verbraucht dabei das
+    // Refresh-Token — daher wie beim Refresh unter der Sitzungssperre. Die Sitzungs-ID bleibt gleich.
+    public Task<(AccountSwitchStatus Status, TokenResponse? Tokens)> SwitchAccountAsync(string sessionId, string customerId) =>
+        WithSessionLockAsync(sessionId, CancellationToken.None, async () =>
+        {
+            var tokens = await store.GetAsync(sessionId);
+            if (tokens is null)
+                return (AccountSwitchStatus.SessionEnded, null);
+
+            // Der Endpoint verlangt ein gültiges Access-Token — ggf. erst erneuern (wir halten die Sperre schon)
+            if (NeedsRefresh(tokens))
+            {
+                if (await RefreshAsync(sessionId, tokens.RefreshToken) is null)
+                    return (AccountSwitchStatus.SessionEnded, null);
+                tokens = (await store.GetAsync(sessionId))!;
+            }
+
+            AuthResult<TokenResponse> result;
+            try
+            {
+                using var scope = scopeFactory.CreateScope();
+                var authApi = scope.ServiceProvider.GetRequiredService<AuthApiClient>();
+                // Kein CancellationToken des Aufrufers — Begründung wie in RefreshAsync
+                result = await authApi.SwitchAccountAsync(tokens.AccessToken, customerId, tokens.RefreshToken, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                // Wie beim Refresh: Ob das Token verbraucht ist, ist unklar → Sitzung beenden statt riskieren
+                logger.LogWarning(ex, "Kontowechsel fehlgeschlagen, Portal-Sitzung wird beendet");
+                await ForgetSessionAsync(sessionId);
+                return (AccountSwitchStatus.SessionEnded, null);
+            }
+
+            if (result.Succeeded)
+            {
+                await store.SetAsync(sessionId, result.Value!);
+                return (AccountSwitchStatus.Switched, result.Value);
+            }
+
+            // Kein Mitglied des Zielkontos: Die API lehnt ab, bevor sie das Refresh-Token anfasst
+            if (result.ErrorCode == AuthApiClient.ForbiddenErrorCode)
+                return (AccountSwitchStatus.Forbidden, null);
+
+            logger.LogInformation("Kontowechsel abgelehnt ({ErrorCode}), Portal-Sitzung wird beendet", result.ErrorCode);
+            await ForgetSessionAsync(sessionId);
+            return (AccountSwitchStatus.SessionEnded, null);
+        });
 
     // Logout: Refresh-Token bei der API widerrufen (best effort) und die Sitzung lokal vergessen
     public async Task EndSessionAsync(string sessionId)
@@ -137,4 +185,13 @@ public sealed class TokenSessionManager(
         await store.RemoveAsync(sessionId);
         locks.TryRemove(sessionId, out _);
     }
+}
+
+public enum AccountSwitchStatus
+{
+    Switched,
+    // Login ist kein Mitglied des Zielkontos; Sitzung unverändert
+    Forbidden,
+    // Sitzung besteht nicht mehr (abgelaufen, widerrufen, API nicht erreichbar) → neu anmelden
+    SessionEnded,
 }

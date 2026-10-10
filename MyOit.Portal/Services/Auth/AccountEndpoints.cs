@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Mvc;
 
 namespace MyOit.Portal.Services.Auth;
 
@@ -28,6 +29,33 @@ public static class AccountEndpoints
 
             await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
             return TypedResults.LocalRedirect("~/");
+        });
+
+        account.MapPost("/switch-account", async (
+            [FromForm] string customerId,
+            HttpContext httpContext, ClaimsPrincipal user,
+            TokenSessionManager sessions, PortalSignInService signIn) =>
+        {
+            var sessionId = user.FindFirst(PortalClaims.SessionId)?.Value;
+            if (sessionId is null)
+                return TypedResults.LocalRedirect("~/account/login");
+
+            var (status, tokens) = await sessions.SwitchAccountAsync(sessionId, customerId);
+            switch (status)
+            {
+                case AccountSwitchStatus.Switched:
+                    await signIn.RenewCookieAsync(httpContext, sessionId, tokens!);
+                    // Zum Dashboard, nicht zurück: Die bisherige Seite (z. B. ein Gerät) gehört zum alten Konto
+                    return TypedResults.LocalRedirect("~/dashboard");
+
+                case AccountSwitchStatus.Forbidden:
+                    // Nur per manipuliertem Formular erreichbar — der Wechsler bietet nur eigene Konten an
+                    return TypedResults.LocalRedirect("~/");
+
+                default:
+                    await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                    return TypedResults.LocalRedirect("~/account/login");
+            }
         });
 
         return endpoints;

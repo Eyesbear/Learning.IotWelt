@@ -13,22 +13,43 @@ public sealed class PortalSignInService(TokenSessionManager sessions, AuthApiCli
         var sessionId = await sessions.CreateSessionAsync(tokens);
         try
         {
-            var me = await authApi.GetMeAsync(tokens.AccessToken, httpContext.RequestAborted);
-
-            await httpContext.SignInAsync(
-                CookieAuthenticationDefaults.AuthenticationScheme,
-                PortalClaims.CreatePrincipal(me, sessionId),
-                new AuthenticationProperties
-                {
-                    IsPersistent = isPersistent,
-                    // Nie länger als das Refresh-Token — danach gäbe es zum Cookie keine gültige Sitzung mehr
-                    ExpiresUtc = new DateTimeOffset(DateTime.SpecifyKind(tokens.RefreshTokenExpiresAt, DateTimeKind.Utc)),
-                });
+            await IssueCookieAsync(httpContext, sessionId, tokens, isPersistent);
         }
         catch
         {
             await sessions.EndSessionAsync(sessionId);
             throw;
         }
+    }
+
+    // Nach dem Kontowechsel: gleiche Sitzung, aber neues Cookie mit den Claims des neuen Kontos.
+    // "Angemeldet bleiben" wird vom bisherigen Cookie übernommen.
+    public async Task RenewCookieAsync(HttpContext httpContext, string sessionId, TokenResponse tokens)
+    {
+        var current = await httpContext.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        try
+        {
+            await IssueCookieAsync(httpContext, sessionId, tokens, current.Properties?.IsPersistent ?? false);
+        }
+        catch
+        {
+            await sessions.EndSessionAsync(sessionId);
+            throw;
+        }
+    }
+
+    private async Task IssueCookieAsync(HttpContext httpContext, string sessionId, TokenResponse tokens, bool isPersistent)
+    {
+        var me = await authApi.GetMeAsync(tokens.AccessToken, httpContext.RequestAborted);
+
+        await httpContext.SignInAsync(
+            CookieAuthenticationDefaults.AuthenticationScheme,
+            PortalClaims.CreatePrincipal(me, sessionId),
+            new AuthenticationProperties
+            {
+                IsPersistent = isPersistent,
+                // Nie länger als das Refresh-Token — danach gäbe es zum Cookie keine gültige Sitzung mehr
+                ExpiresUtc = new DateTimeOffset(DateTime.SpecifyKind(tokens.RefreshTokenExpiresAt, DateTimeKind.Utc)),
+            });
     }
 }

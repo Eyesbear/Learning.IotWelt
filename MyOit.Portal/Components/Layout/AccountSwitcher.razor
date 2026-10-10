@@ -1,0 +1,48 @@
+@using IotWelt.Common.Auth
+@inject IotWeltApiClient Api
+@inject ILogger<AccountSwitcher> Logger
+
+@* Nur sichtbar, wenn der Login zu mehreren Konten gehört. Der Wechsel ist ein echter Formular-POST:
+   Er tauscht das Cookie (neue Konto-Claims), und das geht nicht im Circuit. *@
+
+@if (accounts is { Count: > 1 })
+{
+    <form action="account/switch-account" method="post" class="d-inline me-3">
+        <AntiforgeryToken />
+        <label for="account-switcher" class="visually-hidden">Konto wechseln</label>
+        @* Bewusst mit Button statt Absenden bei Änderung: Sonst würde schon ein Pfeiltastendruck wechseln *@
+        <select id="account-switcher" name="customerId" class="form-select form-select-sm d-inline-block w-auto">
+            @foreach (var account in accounts)
+            {
+                <option value="@account.CustomerId" selected="@account.IsActive">@account.Name (@RoleText(account.Role))</option>
+            }
+        </select>
+        <button type="submit" class="btn btn-sm btn-outline-secondary">Wechseln</button>
+    </form>
+}
+
+@code {
+    private List<AccountSummaryDto>? accounts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            accounts = await Api.GetMyAccountsAsync();
+        }
+        catch (Exception ex)
+        {
+            // Der Wechsler ist eine Zugabe im Kopfbereich — ohne ihn bleibt die Seite benutzbar
+            Logger.LogWarning(ex, "Konten für den Kontowechsler nicht ladbar");
+        }
+    }
+
+    // Rollennamen aus AccountRole der API
+    private static string RoleText(string role) => role switch
+    {
+        "Owner" => "Eigentümer",
+        "Editor" => "Bearbeiter",
+        "Reader" => "Leser",
+        _ => role,
+    };
+}
