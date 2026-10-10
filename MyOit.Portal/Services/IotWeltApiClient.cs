@@ -1,4 +1,5 @@
 using IotWelt.Common;
+using IotWelt.Common.Admin;
 using IotWelt.Common.Auth;
 using IotWelt.Common.Members;
 using MyOit.Portal.Services.Auth;
@@ -147,15 +148,40 @@ public class IotWeltApiClient([FromKeyedServices(IotWeltApiClient.HttpClientName
         response.EnsureSuccessStatusCode();
     }
 
-    public async Task<List<CustomerProfileDto>> GetAdminCustomersAsync()
+    // E1: alle Logins mit Konten und Rollen
+    public async Task<List<AdminLoginDto>> GetAdminLoginsAsync()
     {
-        return await http.GetFromJsonAsync<List<CustomerProfileDto>>("/api/admin/customers") ?? [];
+        return await http.GetFromJsonAsync<List<AdminLoginDto>>("/api/admin/logins") ?? [];
     }
 
-    public async Task AdminDeleteCustomerAsync(string ownerId)
+    // E2: sperren widerruft auch alle Refresh-Tokens; 409 AdminLoginErrors.SelfAction am eigenen Login
+    public async Task<AuthResult> AdminSetLoginLockedAsync(string userId, bool locked)
+    {
+        var action = locked ? "lock" : "unlock";
+        var response = await http.PostAsync($"/api/admin/logins/{Uri.EscapeDataString(userId)}/{action}", content: null);
+        return await ToResultAsync(response, default);
+    }
+
+    // E3: wirkt beim nächsten Token-Refresh des Logins; entziehen am eigenen Login → 409 SelfAction
+    public async Task<AuthResult> AdminSetLoginAdminAsync(string userId, bool isAdmin)
+    {
+        var url = $"/api/admin/logins/{Uri.EscapeDataString(userId)}/admin";
+        var response = isAdmin ? await http.PutAsync(url, content: null) : await http.DeleteAsync(url);
+        return await ToResultAsync(response, default);
+    }
+
+    // 409 DeleteLoginErrors.OwnsAccounts, solange der Login Owner ist (erst AdminDeleteOwnedAccountsAsync)
+    public async Task<AuthResult> AdminDeleteLoginAsync(string userId)
+    {
+        var response = await http.DeleteAsync($"/api/admin/logins/{Uri.EscapeDataString(userId)}");
+        return await ToResultAsync(response, default);
+    }
+
+    // Löscht ALLE Konten, deren Owner der Login ist, samt Geräten und Messwerten — der Login bleibt
+    public async Task<AuthResult> AdminDeleteOwnedAccountsAsync(string ownerId)
     {
         var response = await http.DeleteAsync($"/api/admin/customers/{Uri.EscapeDataString(ownerId)}");
-        response.EnsureSuccessStatusCode();
+        return await ToResultAsync(response, default);
     }
 
     // Vom Portal vergeben: Mitglied/Einladung gibt es nicht (mehr) — z. B. in einem anderen Tab schon entfernt

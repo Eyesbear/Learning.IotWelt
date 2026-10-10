@@ -33,7 +33,7 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 - `docs/user-stories/benutzerverwaltung.md`: User Stories für Konto/Login/Mitgliedschaft (Owner/Editor/Reader, Einladungen, Kontowechsel)
 
 ### Changed
-- Admin-Benutzerverwaltung im Portal zeigt die Kundenliste über die API statt über Microsoft Graph; Löschen entfernt die Konten eines Eigentümers samt Geräten, der Login selbst bleibt bestehen
+- **Admin-Benutzerverwaltung** im Portal (`/admin/users`) arbeitet auf den Logins statt auf Microsoft Graph (Stories E1–E3): Logins mit Konten, Rollen und Status, sperren/entsperren, Admin-Rolle vergeben/entziehen, Konten eines Eigentümers löschen, Login löschen (erst wenn er keine Konten mehr besitzt); am eigenen Login sind diese Aktionen ausgeblendet. Abgelaufene Anmeldung führt zum Login
 - Token-Erzeugung und -Hash aus `TokenService` nach `SecureToken` ausgelagert (gemeinsam für Refresh-Tokens und Einladungen); Löschlogik für Konten nach `AccountService.DeleteAsync` (genutzt von C4 und `DELETE /api/admin/customers/{ownerId}`, Verhalten unverändert)
 - **Migrationen neu aufgesetzt** (`InitialV2`) — alte Stände nur noch über Tag `v0.4.1-azure`; lokale DB neu erstellen
 - `CustomerProfiles` ersetzt durch `Accounts` + `AccountMemberships`; `CustomerService` ersetzt durch `CurrentAccount` (liest das aktive Konto aus dem Token)
