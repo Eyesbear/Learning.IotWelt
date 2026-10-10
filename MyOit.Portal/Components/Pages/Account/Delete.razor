@@ -1,0 +1,304 @@
+@page "/account/delete"
+@attribute [Authorize]
+@attribute [ExcludeFromInteractiveRouting]
+
+@using System.ComponentModel.DataAnnotations
+@using System.Net
+@using IotWelt.Common.Auth
+@using IotWelt.Common.Members
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@using MyOit.Portal.Services.Auth
+@inject IotWeltApiClient Api
+@inject TokenSessionManager Sessions
+@inject PortalSignInService PortalSignIn
+@inject NavigationManager Navigation
+@inject ILogger<Delete> Logger
+
+@* Statisch gerendert (SSR): Nach dem Löschen muss das Cookie erneuert (Konto) bzw. entfernt (Login) werden,
+   und das geht nur in einem echten HTTP-Request.
+   Zwei Schritte wie in der API: erst die eigenen Konten löschen (C4, wirkt aufs aktive Konto),
+   dann den Login (A4) — die API lehnt A4 ab, solange der Login noch Owner eines Kontos ist. *@
+
+<PageTitle>Konto löschen</PageTitle>
+
+<div class="container" style="max-width: 620px;">
+    <h2 class="mb-4">Konto und Login löschen</h2>
+
+    @if (AccountDeleted)
+    {
+        <div class="alert alert-success">Das Konto wurde gelöscht.</div>
+    }
+
+    @if (loadError is not null)
+    {
+        <div class="alert alert-danger">@loadError</div>
+    }
+    else if (accounts is not null)
+    {
+        <div class="card mb-3">
+            <div class="card-body">
+                <h5 class="card-title">Konto löschen</h5>
+
+                @if (activeAccount is { Role: "Owner" })
+                {
+                    <p>
+                        Das Konto <strong>@activeAccount.Name</strong> wird mit allen Geräten, Messwerten,
+                        Mitgliedern und offenen Einladungen gelöscht. <strong>Das lässt sich nicht rückgängig machen.</strong>
+                    </p>
+                    <p class="text-muted small">
+                        Schalten Sie Ihre ESP32-Geräte vorher ab oder konfigurieren Sie sie um — sonst melden sie sich
+                        weiter mit der Geräte-ID dieses Kontos.
+                    </p>
+
+                    @if (accountError is not null)
+                    {
+                        <div class="alert alert-danger">@accountError</div>
+                    }
+
+                    <EditForm Model="AccountInput" method="post" OnValidSubmit="DeleteAccountAsync" FormName="delete-account">
+                        <DataAnnotationsValidator />
+                        <div class="form-check mb-3">
+                            <InputCheckbox id="confirmAccount" @bind-Value="AccountInput.Confirmed" class="form-check-input" />
+                            <label for="confirmAccount" class="form-check-label">
+                                Ja, das Konto „@activeAccount.Name“ endgültig löschen
+                            </label>
+                            <ValidationMessage For="() => AccountInput.Confirmed" class="text-danger small" />
+                        </div>
+                        <button type="submit" class="btn btn-danger">Konto löschen</button>
+                    </EditForm>
+                }
+                else if (activeAccount is not null)
+                {
+                    <p class="mb-0 text-muted">
+                        Im aktiven Konto <strong>@activeAccount.Name</strong> sind Sie nicht Eigentümer.
+                        Löschen kann es nur der Eigentümer.
+                    </p>
+                }
+                else
+                {
+                    <p class="mb-0 text-muted">Sie gehören keinem Konto mehr an.</p>
+                }
+
+                @if (otherOwnedAccounts.Count > 0)
+                {
+                    <hr />
+                    <p class="mb-1">Sie sind außerdem Eigentümer dieser Konten:</p>
+                    <ul>
+                        @foreach (var account in otherOwnedAccounts)
+                        {
+                            <li>@account.Name</li>
+                        }
+                    </ul>
+                    <p class="text-muted small mb-0">
+                        Wechseln Sie oben zum jeweiligen Konto, um es zu löschen.
+                    </p>
+                }
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Login löschen</h5>
+
+                @if (ownedAccountCount > 0)
+                {
+                    <p class="mb-0 text-muted">
+                        Ihren Login können Sie erst löschen, wenn Sie kein Konto mehr besitzen.
+                        Löschen Sie dazu Ihre Konten (siehe oben) oder übertragen Sie die Eigentümerschaft
+                        an ein anderes Mitglied.
+                    </p>
+                }
+                else
+                {
+                    <p>
+                        Ihr Zugang <strong>@userEmail</strong> wird gelöscht und Sie werden abgemeldet.
+                        @if (accounts.Count > 0)
+                        {
+                            <text>Sie verlieren damit auch den Zugriff auf:</text>
+                        }
+                    </p>
+                    @if (accounts.Count > 0)
+                    {
+                        <ul>
+                            @foreach (var account in accounts)
+                            {
+                                <li>@account.Name</li>
+                            }
+                        </ul>
+                    }
+
+                    @if (loginErrors is not null)
+                    {
+                        <div class="alert alert-danger">
+                            @foreach (var error in loginErrors)
+                            {
+                                <div>@error</div>
+                            }
+                        </div>
+                    }
+
+                    <EditForm Model="LoginInput" method="post" OnValidSubmit="DeleteLoginAsync" FormName="delete-login">
+                        <DataAnnotationsValidator />
+                        <div class="mb-3">
+                            <label for="password" class="form-label">Passwort zur Bestätigung</label>
+                            <InputText id="password" type="password" @bind-Value="LoginInput.Password" class="form-control" autocomplete="current-password" />
+                            <ValidationMessage For="() => LoginInput.Password" class="text-danger small" />
+                        </div>
+                        <button type="submit" class="btn btn-danger">Login endgültig löschen</button>
+                    </EditForm>
+                }
+            </div>
+        </div>
+    }
+
+    <p class="mt-3"><a href="account/profile">Zurück zum Profil</a></p>
+</div>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "delete-account")]
+    private DeleteAccountInput AccountInput { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "delete-login")]
+    private DeleteLoginInput LoginInput { get; set; } = default!;
+
+    // Gesetzt nach dem Redirect im Anschluss an C4 (Post/Redirect/Get)
+    [SupplyParameterFromQuery]
+    private bool AccountDeleted { get; set; }
+
+    private List<AccountSummaryDto>? accounts;
+    private AccountSummaryDto? activeAccount;
+    private List<AccountSummaryDto> otherOwnedAccounts = [];
+    private int ownedAccountCount;
+    private string? userEmail;
+    private string? loadError;
+    private string? accountError;
+    private IReadOnlyList<string>? loginErrors;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Beim POST setzt das Formular-Binding nur das abgeschickte Formular; das andere bleibt leer
+        AccountInput ??= new();
+        LoginInput ??= new();
+        userEmail = HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value;
+
+        // Auch beim POST laden: Die Handler brauchen den aktuellen Stand (aktives Konto, Owner-Konten)
+        try
+        {
+            accounts = await Api.GetMyAccountsAsync();
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            Navigation.NavigateToLogin();
+            return;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            Logger.LogWarning(ex, "Löschseite: Konten nicht ladbar");
+            loadError = "Ihre Konten konnten gerade nicht geladen werden. Bitte versuchen Sie es später erneut.";
+            return;
+        }
+
+        activeAccount = accounts.FirstOrDefault(a => a.IsActive);
+        var owned = accounts.Where(a => a.Role == "Owner").ToList();
+        ownedAccountCount = owned.Count;
+        otherOwnedAccounts = owned.Where(a => !a.IsActive).ToList();
+    }
+
+    private async Task DeleteAccountAsync()
+    {
+        if (accounts is null || activeAccount is not { Role: "Owner" })
+            return;
+
+        AuthResult result;
+        try
+        {
+            result = await Api.DeleteActiveAccountAsync(HttpContext.RequestAborted);
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            Navigation.NavigateToLogin();
+            return;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            Logger.LogWarning(ex, "Konto löschen: API nicht erreichbar");
+            accountError = "Das Konto konnte gerade nicht gelöscht werden. Bitte versuchen Sie es später erneut.";
+            return;
+        }
+
+        if (!result.Succeeded)
+        {
+            // 409 not_owner (Eigentümerschaft inzwischen übertragen) oder 403 (Token sagt nicht Owner)
+            accountError = "Sie sind nicht (mehr) Eigentümer dieses Kontos.";
+            return;
+        }
+
+        // Das Access-Token und das Cookie nennen noch das gelöschte Konto → Sitzung erneuern lassen;
+        // die API wählt dabei ein verbliebenes Konto als aktives (oder keins)
+        var sessionId = HttpContext.User.FindFirst(PortalClaims.SessionId)?.Value;
+        var tokens = sessionId is null ? null : await Sessions.RenewTokensAsync(sessionId);
+        if (tokens is null)
+        {
+            await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+            Navigation.NavigateTo("account/login");
+            return;
+        }
+
+        await PortalSignIn.RenewCookieAsync(HttpContext, sessionId!, tokens);
+        Navigation.NavigateTo("account/delete?accountDeleted=true");
+    }
+
+    private async Task DeleteLoginAsync()
+    {
+        if (accounts is null || ownedAccountCount > 0)
+            return;
+
+        AuthResult result;
+        try
+        {
+            result = await Api.DeleteMyLoginAsync(LoginInput.Password, HttpContext.RequestAborted);
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            Navigation.NavigateToLogin();
+            return;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            Logger.LogWarning(ex, "Login löschen: API nicht erreichbar");
+            loginErrors = ["Der Login konnte gerade nicht gelöscht werden. Bitte versuchen Sie es später erneut."];
+            return;
+        }
+
+        if (!result.Succeeded)
+        {
+            loginErrors = result.ErrorCode == DeleteLoginErrors.OwnsAccounts
+                ? ["Sie sind noch Eigentümer eines Kontos. Löschen Sie es zuerst oder übertragen Sie die Eigentümerschaft."]
+                : result.Errors is { Count: > 0 } ? result.Errors : ["Der Login konnte nicht gelöscht werden."];
+            return;
+        }
+
+        // Die Refresh-Tokens sind mit dem Login gelöscht; EndSession räumt die Portal-Sitzung auf
+        var sessionId = HttpContext.User.FindFirst(PortalClaims.SessionId)?.Value;
+        if (sessionId is not null)
+            await Sessions.EndSessionAsync(sessionId);
+        await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        Navigation.NavigateTo("/");
+    }
+
+    private sealed class DeleteAccountInput
+    {
+        [Range(typeof(bool), "true", "true", ErrorMessage = "Bitte bestätigen Sie das Löschen.")]
+        public bool Confirmed { get; set; }
+    }
+
+    private sealed class DeleteLoginInput
+    {
+        [Required(ErrorMessage = "Bitte das Passwort angeben.")]
+        public string Password { get; set; } = "";
+    }
+}

@@ -105,6 +105,18 @@ public sealed class TokenSessionManager(
             return (AccountSwitchStatus.SessionEnded, null);
         });
 
+    // Sofort erneuern, auch wenn das Access-Token noch gültig ist — z. B. nachdem das aktive Konto gelöscht
+    // wurde: Das alte Token nennt noch dieses Konto, beim Refresh wählt die API ein verbliebenes (oder keins).
+    // null = Sitzung beendet → neu anmelden.
+    public Task<TokenResponse?> RenewTokensAsync(string sessionId) =>
+        WithSessionLockAsync(sessionId, CancellationToken.None, async () =>
+        {
+            var tokens = await store.GetAsync(sessionId);
+            if (tokens is null || await RefreshAsync(sessionId, tokens.RefreshToken) is null)
+                return null;
+            return await store.GetAsync(sessionId);
+        });
+
     // Logout: Refresh-Token bei der API widerrufen (best effort) und die Sitzung lokal vergessen
     public async Task EndSessionAsync(string sessionId)
     {

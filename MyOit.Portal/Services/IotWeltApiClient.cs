@@ -1,5 +1,7 @@
 using IotWelt.Common;
 using IotWelt.Common.Auth;
+using MyOit.Portal.Services.Auth;
+using System.Net;
 using System.Net.Http.Json;
 
 namespace MyOit.Portal.Services;
@@ -14,6 +16,26 @@ public class IotWeltApiClient([FromKeyedServices(IotWeltApiClient.HttpClientName
     public async Task<List<AccountSummaryDto>> GetMyAccountsAsync()
     {
         return await http.GetFromJsonAsync<List<AccountSummaryDto>>("/api/auth/accounts") ?? [];
+    }
+
+    // C4: aktives Konto samt Geräten und Messwerten löschen. Fehlercode MemberErrors.NotOwner (409) oder
+    // AuthApiClient.ForbiddenErrorCode (403), wenn der Login nicht (mehr) Owner ist.
+    // Das Access-Token nennt danach noch das gelöschte Konto — die Sitzung muss erneuert werden.
+    public async Task<AuthResult> DeleteActiveAccountAsync(CancellationToken ct = default)
+    {
+        var response = await http.DeleteAsync("/api/members/account", ct);
+        return await ToResultAsync(response, ct);
+    }
+
+    // A4: eigenen Login löschen. 400 = Passwort falsch, 409 DeleteLoginErrors.OwnsAccounts = noch Owner eines Kontos
+    public async Task<AuthResult> DeleteMyLoginAsync(string password, CancellationToken ct = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Delete, "/api/auth/me")
+        {
+            Content = JsonContent.Create(new DeleteLoginRequest(password)),
+        };
+        var response = await http.SendAsync(request, ct);
+        return await ToResultAsync(response, ct);
     }
 
     public async Task<List<DeviceDashboardDto>> GetDashboardAsync()
@@ -87,6 +109,16 @@ public class IotWeltApiClient([FromKeyedServices(IotWeltApiClient.HttpClientName
     {
         var response = await http.DeleteAsync($"/api/admin/customers/{Uri.EscapeDataString(ownerId)}");
         response.EnsureSuccessStatusCode();
+    }
+
+    // 401 als Exception wie bei den übrigen Aufrufen — die Seiten leiten dann zum Login
+    private static async Task<AuthResult> ToResultAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        if (response.IsSuccessStatusCode)
+            return new AuthResult(true);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+            response.EnsureSuccessStatusCode();
+        return await AuthApiClient.ReadFailureAsync(response, ct);
     }
 
     private record CustomerProfileResponse(string CustomerId);

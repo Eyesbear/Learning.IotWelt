@@ -98,11 +98,13 @@ public sealed class AuthApiClient(HttpClient http)
         return new(default, false, failure.ErrorCode, failure.Errors);
     }
 
-    // 400 (ValidationProblem) und 401/403 (ProblemDetails mit Fehlercode im title) sind fachliche Fehler,
+    // 400 (ValidationProblem) und 401/403/409 (ProblemDetails mit Fehlercode im title) sind fachliche Fehler,
     // alles andere (500, API nicht erreichbar) ist eine Störung und wird als Exception weitergereicht.
-    private static async Task<AuthResult> ReadFailureAsync(HttpResponseMessage response, CancellationToken ct)
+    // Auch von IotWeltApiClient genutzt (Löschen von Konto und Login).
+    internal static async Task<AuthResult> ReadFailureAsync(HttpResponseMessage response, CancellationToken ct)
     {
-        if (response.StatusCode is not (HttpStatusCode.BadRequest or HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden))
+        if (response.StatusCode is not (HttpStatusCode.BadRequest or HttpStatusCode.Unauthorized
+            or HttpStatusCode.Forbidden or HttpStatusCode.Conflict))
             response.EnsureSuccessStatusCode();
 
         HttpValidationProblemDetails? problem = null;
@@ -115,11 +117,11 @@ public sealed class AuthApiClient(HttpClient http)
             // Leerer oder kein JSON-Body (z. B. Forbid()) — dann gibt es nur den Statuscode
         }
 
-        // Nur bei 401 steht ein Fehlercode im title; bei 400 ist er der allgemeine Validierungstext.
+        // Nur bei 401/409 steht ein Fehlercode im title; bei 400 ist er der allgemeine Validierungstext.
         // 403 (Forbid()) hat keinen Body — dafür ein eigener Code des Portals.
         var errorCode = response.StatusCode switch
         {
-            HttpStatusCode.Unauthorized => problem?.Title,
+            HttpStatusCode.Unauthorized or HttpStatusCode.Conflict => problem?.Title,
             HttpStatusCode.Forbidden => ForbiddenErrorCode,
             _ => null,
         };

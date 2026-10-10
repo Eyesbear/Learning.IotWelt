@@ -9,6 +9,7 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 ## [Unreleased] — v2.0 im Umbau
 
 ### Added
+- Portal-Seite **Konto und Login löschen** (`/account/delete`): eigenes aktives Konto mit Bestätigung löschen (C4), danach den Login mit Passwortbestätigung (A4); weitere eigene Konten werden aufgelistet. Nach dem Löschen eines Kontos wird die Sitzung sofort erneuert, damit Token und Cookie nicht mehr auf das gelöschte Konto zeigen
 - **Portal meldet sich an der eigenen API an** (Cookie statt Entra ID): Login, Logout, „Angemeldet bleiben“; im Cookie steht nur eine Sitzungs-ID, Access- und Refresh-Token bleiben serverseitig im Portal und werden vor Ablauf automatisch erneuert (pro Sitzung serialisiert, damit kein Refresh-Token doppelt verwendet wird)
 - Portal-Seiten für **Registrierung mit E-Mail-Bestätigung** und **Passwort vergessen/zurücksetzen** (`/account/...`); Identity-Fehler der API erscheinen auf Deutsch
 - **Kontowechsler** im Kopfbereich des Portals, sichtbar bei Logins mit mehreren Konten
@@ -45,6 +46,7 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 - Admin-Geräteliste: Besitzerabfrage war von EF Core nicht übersetzbar (Filter nach der Projektion in einen Record)
 
 ### Security
+- Portal: Formular-Endpoints unter `/account` (Logout, Kontowechsel) lehnen Anfragen ohne gültiges Antiforgery-Token ab (400) — `UseAntiforgery()` prüft nur und blockiert selbst nicht; eine fremde Seite hätte sonst per Auto-Submit abmelden oder das Konto wechseln können
 - `POST /api/sensor` hängt ein Gerät mit vorhandenem Besitzer nicht mehr um — bisher konnte jeder, der die `hardwareId` kannte, das Gerät per `customer_id` in ein fremdes Konto holen. Abweichende `customer_id` wird ignoriert und als Warnung geloggt; herrenlose Geräte werden weiterhin beim ersten Melden zugeordnet
 - Bekannt, offen bis Phase 6 (Geräte-Schlüssel): Wer eine `hardwareId` kennt, kann weiterhin Messwerte einschleusen; wer eine `customer_id` kennt, kann neue Geräte in dieses Konto melden
 
