@@ -6,7 +6,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>6ae8d432-0836-41ae-ac62-4d8c93cada3e</UserSecretsId>
     <NoWarn>NU1903</NoWarn>
-    <Version>0.4.1</Version>
   </PropertyGroup>
 
   <ItemGroup>

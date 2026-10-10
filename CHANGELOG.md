@@ -6,7 +6,11 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 
 ---
 
-## [Unreleased] — v2.0 im Umbau
+## [Unreleased]
+
+---
+
+## [0.5.0] — 2026-10-10 — Phase 1: eigene Benutzerverwaltung (v2.0 im Umbau)
 
 ### Added
 - Portal-Seite **Einladung annehmen** (`/account/accept-invitation`, Ziel des Einladungslinks): neue Person legt direkt einen Login an und ist angemeldet (B2); bestehender Login meldet sich an und nimmt an, danach wechselt das Portal gleich in das neue Konto (B3). Abgelaufene, schon angenommene und fremde Einladungen (anderer Login angemeldet) werden erklärt
@@ -41,6 +45,7 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 - `CLAUDE.md` beschreibt die umgesetzte Auth-Architektur statt des Übergangszustands; `MIGRATION_SPEC_V2.0.md` an die tatsächliche Umsetzung angepasst (API als Token-Aussteller, Env-Vars statt Secrets in `appsettings.Production.json`, offene Punkte für myASP.NET)
 - `CLAUDE.md` für die v2.0-Zielarchitektur neu geschrieben (kein Azure, API als Token-Aussteller, Definition of Done, Konventionen)
 - `.claude/settings.local.json` nicht mehr versioniert
+- Version steht nur noch zentral in `Directory.Build.props` (`VersionPrefix` 0.5.0); die `<Version>`-Einträge in API und Portal sind entfernt — die drei Angaben waren schon wieder auseinandergelaufen (0.2.0 / 0.4.1)
 
 ### Removed
 - `GET /api/admin/customers` und `CustomerProfileDto` (ungenutzt seit der Login-Verwaltung); das Löschen der Konten eines Logins heißt jetzt `DELETE /api/admin/logins/{userId}/accounts` statt `DELETE /api/admin/customers/{ownerId}`
@@ -56,6 +61,11 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 - Portal: Formular-Endpoints unter `/account` (Logout, Kontowechsel) lehnen Anfragen ohne gültiges Antiforgery-Token ab (400) — `UseAntiforgery()` prüft nur und blockiert selbst nicht; eine fremde Seite hätte sonst per Auto-Submit abmelden oder das Konto wechseln können
 - `POST /api/sensor` hängt ein Gerät mit vorhandenem Besitzer nicht mehr um — bisher konnte jeder, der die `hardwareId` kannte, das Gerät per `customer_id` in ein fremdes Konto holen. Abweichende `customer_id` wird ignoriert und als Warnung geloggt; herrenlose Geräte werden weiterhin beim ersten Melden zugeordnet
 - Bekannt, offen bis Phase 6 (Geräte-Schlüssel): Wer eine `hardwareId` kennt, kann weiterhin Messwerte einschleusen; wer eine `customer_id` kennt, kann neue Geräte in dieses Konto melden
+
+### Migrations
+- `20261008133322_InitialV2` (neue Basis, ersetzt alle früheren Migrationen)
+- `20261009202813_AccountInvitations`
+- `20261009210403_OneOwnerPerAccount`
 
 ---
 

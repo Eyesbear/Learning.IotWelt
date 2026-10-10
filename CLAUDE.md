@@ -106,7 +106,7 @@ betroffene Seite/Endpoint einmal real ausprobiert, `CHANGELOG.md` ergänzt.
   beibehalten; Kommentare, Commits, CHANGELOG auf Deutsch.
 - Git: `master` nur über Pull Requests; Branches `feature/…`, `fix/…`, `chore/…`.
   Commit-Nachrichten im Stil `feat: …`, `fix: …`, `chore: …`, `docs: …`, `test: …`.
-- Versionierung: SemVer, Version in den csproj-Dateien, Einträge in `CHANGELOG.md` (Keep a Changelog).
+- Versionierung: SemVer, Version zentral in `Directory.Build.props` (`VersionPrefix`, nicht in den csproj-Dateien), Einträge in `CHANGELOG.md` (Keep a Changelog).
 - Kleine, einzeln prüfbare Commits; keine kommentarlosen Großumbauten.
 
 ## Aktueller Stand / Roadmap

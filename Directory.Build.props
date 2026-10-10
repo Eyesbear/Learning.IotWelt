@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <VersionPrefix>0.2.0</VersionPrefix>
+    <VersionPrefix>0.5.0</VersionPrefix>
     <Authors>Thorsten Mann</Authors>
     <Company>eyes-IT</Company>
   </PropertyGroup>
