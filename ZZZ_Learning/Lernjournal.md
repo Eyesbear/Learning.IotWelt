@@ -122,7 +122,7 @@ In Phase 1 werde ich definitiv mehr Zwischenfragen stellen.
 - JWT, Refresh-Rotation und CSRF-Schutz sind komplexe Themen. Ich habe jetzt ein besseres Verständnis dafür, wie sie zusammenarbeiten, und könnte die Konzepte erklären, insbesondere wie Refresh-Tokens sicher gehandhabt werden und wie CSRF-Angriffe verhindert werden können.
 
 ### Belege
-- PRs: #3 (1a), #4 (1b), #5 (1c), #6 (1d), #7 (1e), 1f: PR folgt
+- PRs: #3 (1a), #4 (1b), #5 (1c), #6 (1d), #7 (1e), #8 (1f)
 - Merge-Konflikt aufgelöst: `793e5c6` · CSRF-Schutz: `AccountEndpoints.cs` (Endpoint-Filter auf `/account`)
 - Sitzungssperre: `MyOit.Portal/Services/Auth/TokenSessionManager.cs` · Tokens: `IotWelt.API/Services/TokenService.cs`
 - Arbeitsaufträge der parallelen Sitzungen: `phase1-1c-api-members.md`, `phase1-1d-portal-auth.md` (Claude-Plans)
