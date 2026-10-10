@@ -25,3 +25,10 @@ Erledigte Punkte werden gestrichen und im CHANGELOG erwähnt.
   Braucht eine Hinweisseite („Sie gehören keinem Konto an“) und den API-Endpoint oben.
 - **Kein Portal-Testprojekt** *(aus 1d)* — z. B. bUnit für Komponenten, `WebApplicationFactory` für die
   Formular-Endpoints (CSRF-Schutz wurde bisher nur manuell geprüft).
+
+## Produktion (Phase 4)
+
+- **Kein echter E-Mail-Versand** — `LoggingEmailSender` schreibt Bestätigungs-, Reset- und Einladungslinks nur ins Log.
+  Für Staging/Produktion einen SMTP-Sender (myASP.NET) anbinden.
+- **Portal-Sitzungen nur im Speicher** — Neustart oder App-Pool-Recycle meldet alle ab. Persistenten `ITokenStore`
+  und dauerhaft abgelegte Data-Protection-Schlüssel vorsehen (auch für Docker-Staging relevant).

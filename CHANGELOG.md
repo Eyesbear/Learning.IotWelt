@@ -38,6 +38,7 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 - Token-Erzeugung und -Hash aus `TokenService` nach `SecureToken` ausgelagert (gemeinsam für Refresh-Tokens und Einladungen); Löschlogik für Konten nach `AccountService.DeleteAsync` (genutzt von C4 und dem Admin-Löschen der Konten eines Logins, Verhalten unverändert)
 - **Migrationen neu aufgesetzt** (`InitialV2`) — alte Stände nur noch über Tag `v0.4.1-azure`; lokale DB neu erstellen
 - `CustomerProfiles` ersetzt durch `Accounts` + `AccountMemberships`; `CustomerService` ersetzt durch `CurrentAccount` (liest das aktive Konto aus dem Token)
+- `CLAUDE.md` beschreibt die umgesetzte Auth-Architektur statt des Übergangszustands; `MIGRATION_SPEC_V2.0.md` an die tatsächliche Umsetzung angepasst (API als Token-Aussteller, Env-Vars statt Secrets in `appsettings.Production.json`, offene Punkte für myASP.NET)
 - `CLAUDE.md` für die v2.0-Zielarchitektur neu geschrieben (kein Azure, API als Token-Aussteller, Definition of Done, Konventionen)
 - `.claude/settings.local.json` nicht mehr versioniert
 

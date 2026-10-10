@@ -1,41 +1,49 @@
-# Blazor Server Projekt – Migration zu Version 2.0
-## Von Azure/Entra ID zu myASP.NET/ASP.NET Identity
+# IotWelt – Migration zu Version 2.0
+## Von Azure/Entra ID zu eigener Benutzerverwaltung und myASP.NET
 
-**Autor:** Thorsten  
-**Datum:** September 2026  
-**Status:** Specification für Claude Code Umsetzung  
-**Zielplattform:** myASP.NET Pro Plan (Windows Server 2022, SQL Server 2025)
+**Autor:** Thorsten
+**Ursprung:** September 2026 (Spec für die Umsetzung mit Claude Code)
+**Stand:** Oktober 2026, nach Phase 1 (v0.5.0) an die tatsächliche Umsetzung angepasst
+**Zielplattform Produktion:** myASP.NET (Windows Server, IIS, SQL Server) — Phase 4
+
+> Die ursprüngliche Spec sah Cookie-Auth mit Identity-Scaffolding direkt im Blazor-Portal vor.
+> Umgesetzt wurde stattdessen: **Die API ist der Token-Aussteller**, Portal und (künftig) MAUI-App
+> sind reine Clients. Grund: Die MAUI-App braucht dieselbe Anmeldung, und nur die API greift auf die DB zu.
+> Verbindliche Architekturregeln stehen in `CLAUDE.md`, die fachlichen Regeln in
+> `docs/user-stories/benutzerverwaltung.md`.
 
 ---
 
 ## 📋 Executive Summary
 
-Bestehende Blazor Server Anwendung (v1.0) läuft aktuell in Azure mit Entra ID für Authentifizierung. Version 2.0 wird auf myASP.NET gehostet und nutzt ASP.NET Identity für Benutzerverwaltung. Ziel: Kostenersparnis (€24–38/Monat vs. Azure) bei gleicher Funktionalität für interne Demoanwendung.
+v1.0 lief in Azure (App Service, Entra ID / External ID, Microsoft Graph). Letzter Stand: Git-Tag `v0.4.1-azure`.
+v2.0 kommt ohne Azure aus: ASP.NET Core Identity in der API, eigene JWTs mit rotierenden Refresh-Tokens,
+lokal Aspire, Staging per Docker Compose im LAN, Produktion bei myASP.NET. Ziel: keine Azure-Kosten,
+gleiche Funktion, plus Mehrbenutzer-Konten (Owner/Editor/Reader).
 
 ---
 
 ## 🎯 Anforderungen & Constraints
 
 ### Funktionale Anforderungen
-- [x] Blazor Server Frontend (bestehend, keine Logik-Änderungen)
-- [x] ASP.NET Web API (bestehend, nur Auth-Anpassung)
-- [x] Benutzerverwaltung (Entra ID → ASP.NET Identity Migration)
-- [x] Entity Framework mit Dependency Injection (unverändert)
-- [x] SQL Server als Datenbank (unverändert)
+- [x] Blazor Server Portal (Radzen), ruft nur die API auf
+- [x] ASP.NET Core Web API mit eigener Token-Ausgabe
+- [x] Benutzerverwaltung mit ASP.NET Core Identity (Registrierung, E-Mail-Bestätigung, Passwort vergessen/ändern)
+- [x] Konten mit mehreren Logins: Einladungen, Konto-Rollen, Kontowechsel, Eigentümerschaft übertragen
+- [x] Login-Verwaltung für System-Admins (sperren, Admin-Rolle, löschen)
+- [x] Entity Framework Core, SQL Server
+- [ ] MAUI-App (Android/Windows) als zweiter Client — Phase 5
 
 ### Nicht-funktionale Anforderungen
-- Domain: **teqpool.de** (mit myASP.NET verbunden)
-- Subdomain: **things.teqpool.net** (von Strato auf myASP.NET umgeleitet)
-- Hosting: myASP.NET Pro Plan
-- DB-Host: myASP.NET SQL Server 2025
-- .NET Version: .NET 8 LTS (mindestens)
-- Datentyp: **Demodaten nur** (keine Produktionsdaten, daher Migration einfacher)
+- Domain: **teqpool.de**, Subdomain **things.teqpool.net** (von Strato auf myASP.NET umgeleitet)
+- Hosting: myASP.NET, DB: SQL Server bei myASP.NET
+- .NET 10
+- Nur Demodaten: frische Datenbank, keine Übernahme der Entra-Benutzer
 
 ### Constraints & Limitations
-- ❌ Entra ID Features aufgegeben: MFA, Conditional Access, Azure B2C
-- ❌ Kein Azure Key Vault: Secrets müssen in `appsettings.json` oder Environment Variables
-- ⚠️ Keine Single Sign-On (SSO) mit Microsoft Account (falls nicht gewünscht)
-- ⚠️ Benutzer müssen sich neu registrieren oder werden importiert
+- ❌ Aufgegeben: MFA, Conditional Access, Single Sign-On mit Microsoft-Konto
+- ❌ Kein Key Vault — Secrets **nie** in `appsettings*.json`: lokal User-Secrets, sonst Env-Vars / `.env`
+- ⚠️ Benutzer registrieren sich neu (kein Import)
 
 ---
 
@@ -43,547 +51,197 @@ Bestehende Blazor Server Anwendung (v1.0) läuft aktuell in Azure mit Entra ID f
 
 ### v1.0 (Azure/Entra ID)
 ```
-┌─────────────────────────────────────────┐
-│   Blazor Server (Azure App Service)     │
-│   ├─ Razor Components                   │
-│   └─ DI Container                       │
-└──────────────┬──────────────────────────┘
-               │
-       ┌───────┴────────┐
-       ▼                ▼
-┌──────────────┐  ┌──────────────────┐
-│ Web API      │  │ Entra ID (Azure) │
-│ Controllers  │  │ Authentication   │
-└──────┬───────┘  └──────────────────┘
-       │
-       ▼
-┌──────────────────────┐
-│ SQL Server (Azure)   │
-│ ├─ UserClaimsTable   │
-│ ├─ RolesTable        │
-│ └─ App Data          │
-└──────────────────────┘
+Portal (Azure App Service) ──OIDC──► Entra ID / External ID
+   │  Access-Token (Entra)              ▲
+   ▼                                    │ Microsoft Graph (Benutzerverwaltung)
+Web API (Azure App Service) ────────────┘
+   │
+   ▼
+SQL Server (Azure)
 ```
 
-### v2.0 (myASP.NET/ASP.NET Identity)
+### v2.0 (umgesetzt)
 ```
-┌─────────────────────────────────────────┐
-│   Blazor Server (myASP.NET)             │
-│   ├─ Razor Components                   │
-│   └─ DI Container                       │
-└──────────────┬──────────────────────────┘
-               │
-       ┌───────┴────────┐
-       ▼                ▼
-┌──────────────┐  ┌──────────────────────┐
-│ Web API      │  │ ASP.NET Identity     │
-│ Controllers  │  │ (lokale Auth)        │
-└──────┬───────┘  └──────────────────────┘
-       │          (in SQL Server Tabellen)
-       ▼
-┌──────────────────────────┐
-│ SQL Server (myASP.NET)   │
-│ ├─ AspNetUsers           │
-│ ├─ AspNetRoles           │
-│ ├─ AspNetUserRoles       │
-│ └─ App Data              │
+┌────────────────────────────┐        ┌──────────────────────┐
+│ MyOit.Portal (Blazor)      │        │ IotWelt.Maui (Ph. 5) │
+│ Cookie: nur Sitzungs-ID    │        │ Tokens im SecureStore│
+│ Tokens serverseitig im RAM │        └──────────┬───────────┘
+└─────────────┬──────────────┘                   │
+              │ Bearer-JWT (+ Refresh)           │
+              ▼                                  ▼
+┌──────────────────────────────────────────────────────────┐
+│ IotWelt.API                                              │
+│ ├─ ASP.NET Core Identity (AddIdentityCore, ohne UI)      │
+│ ├─ /api/auth: Login, Refresh, Logout, Registrierung …    │
+│ ├─ JWT HS256 (15 min) + Refresh-Token (14 Tage, Rotation)│
+│ └─ Mandantentrennung über Claim account_id               │
+└─────────────┬────────────────────────────────────────────┘
+              ▼                         ▲
+┌──────────────────────────┐            │ POST /api/sensor (anonym)
+│ SQL Server               │       ESP32-Klimasensoren
+│ AspNet*-Tabellen + App   │
 └──────────────────────────┘
 ```
 
 ---
 
-## 🔐 Authentifizierung – Änderungen
+## 🔐 Authentifizierung – Umsetzung
 
-### Alte Konfiguration (Entra ID)
-```csharp
-// Program.cs (v1.0)
-builder.AddMicrosoftIdentityWebAppAuthentication(configuration);
-builder.AddMicrosoftIdentityWebApi(configuration);
+### API (`IotWelt.API`)
+- `AddIdentityCore<AppUser>` + Rollen + EF-Store, **keine Cookies, keine UI** (`Program.cs`).
+  Passwort mind. 8 Zeichen mit Groß-/Kleinbuchstaben und Ziffer, E-Mail-Bestätigung Pflicht,
+  Sperre nach 5 Fehlversuchen für 15 min.
+- `TokenService` stellt aus: **Access-Token** JWT HS256, 15 min, Claims `sub`, `name`, `email`, `role`,
+  `account_id`, `account_role`. **Refresh-Token** 14 Tage, nur als SHA-256-Hash in `RefreshTokens`,
+  bei jedem Refresh rotiert; die Wiederverwendung eines verbrauchten Tokens widerruft alle Sitzungen des Logins.
+- Konfiguration Section `Jwt` (`JwtOptions`): Issuer, Audience, Laufzeiten in `appsettings.json`,
+  **`Jwt:SigningKey`** (Base64, ≥ 32 Bytes) nur aus Secret/Env-Var.
+- Rechte: Policies `CanRead` / `CanEdit` / `IsOwner` aus der Konto-Rolle, System-Rolle `Admin` getrennt.
+  `CurrentAccount` liefert `UserId` und `CustomerId` des aktiven Kontos; jeder Datenzugriff filtert darüber.
+- Admin-Seed beim Start aus `SeedAdmin:Email` / `SeedAdmin:Password`.
 
-// appsettings.json
-"AzureAd": {
-  "Instance": "https://login.microsoftonline.com/",
-  "ClientId": "xxx-xxx-xxx",
-  "TenantId": "xxx-xxx-xxx",
-  "CallbackPath": "/signin-oidc"
-}
-```
+### Portal (`MyOit.Portal`)
+- Eigenes Cookie-Schema; im Cookie steht nur die Sitzungs-ID (Claim `portal_sid`) plus Anzeige-Claims.
+- Access- und Refresh-Token liegen serverseitig im `ITokenStore` (heute `InMemoryTokenStore`).
+- `TokenSessionManager` erneuert vor Ablauf und serialisiert Refresh, Logout, Kontowechsel und
+  Passwortänderung pro Sitzung (Refresh-Token ist nur einmal verwendbar).
+- `BearerTokenHandler` hängt das Token an alle API-Aufrufe (`IotWeltApiClient`).
+- Seiten, die das Cookie setzen (Login, Registrierung, Einladung annehmen, Konto löschen), laufen als
+  statisches SSR; interaktive Seiten ändern das Cookie per Formular-POST an `/account/*`
+  (Logout, Kontowechsel, Eigentümerschaft übertragen) — mit Antiforgery-Pflicht.
 
-### Neue Konfiguration (ASP.NET Identity)
-```csharp
-// Program.cs (v2.0)
-// 1. DbContext
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(
-        builder.Configuration.GetConnectionString("DefaultConnection")));
-
-// 2. Identity
-builder.Services.AddDefaultIdentity<IdentityUser>(options =>
-{
-    options.SignIn.RequireConfirmedAccount = false;
-    options.Password.RequireDigit = true;
-    options.Password.RequireNonAlphanumeric = true;
-    options.Password.RequiredLength = 8;
-})
-    .AddRoles<IdentityRole>()
-    .AddEntityFrameworkStores<ApplicationDbContext>();
-
-// 3. Authentication Scheme
-builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
-    .AddCookie(options =>
-    {
-        options.LoginPath = "/Identity/Account/Login";
-        options.LogoutPath = "/Identity/Account/Logout";
-        options.AccessDeniedPath = "/Identity/Account/AccessDenied";
-    });
-
-builder.Services.AddAuthorization();
-
-// Alte Entra ID Services ENTFERNEN
-```
-
-```json
-// appsettings.json (v2.0)
-{
-  "ConnectionStrings": {
-    "DefaultConnection": "Server=sql2025.database.windows.net;Database=teqpool_v2;User Id=sa;Password=xxx;Encrypt=true;Connection Timeout=30;"
-  }
-}
-```
+### Lokal (Aspire)
+- Der AppHost reicht den Parameter `jwt-signing-key` (User-Secrets des AppHost,
+  `Parameters:jwt-signing-key`) als `Jwt__SigningKey` an die API weiter.
+- Tests setzen einen eigenen Schlüssel (`ApiFactory`), Datenbank per Testcontainers.
 
 ---
 
-## 💾 Datenbank-Migration
+## 💾 Datenbank
 
-### Neue Tabellen (ASP.NET Identity)
-Diese werden von EF automatisch erstellt:
-- `AspNetUsers` – Benutzer (UserName, Email, PasswordHash, etc.)
-- `AspNetRoles` – Rollen (Admin, User, etc.)
-- `AspNetUserRoles` – Zuordnung User ↔ Roles
-- `AspNetUserClaims` – Custom Claims pro Benutzer
-- `AspNetUserLogins` – OAuth/Social Logins (optional)
+### Tabellen
+- Identity: `AspNetUsers`, `AspNetRoles`, `AspNetUserRoles`, `AspNetUserClaims`, `AspNetUserLogins`,
+  `AspNetUserTokens`, `AspNetRoleClaims` (`AppDbContext : IdentityDbContext<AppUser>`)
+- Konten: `Accounts` (mit `CustomerId`), `AccountMemberships` (Login ↔ Konto mit Rolle, genau ein Owner
+  pro Konto per gefiltertem Unique-Index), `AccountInvitations`, `RefreshTokens`
+- Fachdaten: `Devices`, `RaumKlimaLogs`
 
-### Migration Path
-```bash
-# 1. Bestehende Entra ID Users extrahieren (manuell oder via Azure CLI)
-# Export: CSV mit Email, UserId, etc.
-
-# 2. EF Migration erstellen
-dotnet ef migrations add InitialIdentity
-
-# 3. Datenbank aktualisieren (bei myASP.NET)
-dotnet ef database update
-
-# 4. Benutzer-Import (optional, einmalig)
-# Script: ImportEntraUsersToIdentity.cs
-# ├─ Liest CSV der Entra ID Users
-# ├─ Erstellt IdentityUser + hasht Passwort
-# └─ Schreibt zu AspNetUsers
-```
+### Migrationen
+- Frische Basis `InitialV2` (alte Stände nur über Tag `v0.4.1-azure`), danach `AccountInvitations`,
+  `OneOwnerPerAccount`.
+- Lokal per `Update-Database` (Befehle in `CLAUDE.md`).
+- **myASP.NET:** idempotentes Skript erzeugen und im SQL-Manager des Control Panels ausführen:
+  ```bash
+  dotnet ef migrations script --idempotent --project IotWelt.API --startup-project IotWelt.API -o migrate.sql
+  ```
 
 ### Connection String Format (myASP.NET)
 ```
-Server=sql.myasp.net;Database=teqpool_xxx;User Id=teqpool_user;Password=YourPassword;Encrypt=true;
+Server=sql.myasp.net;Database=teqpool_xxx;User Id=teqpool_user;Password=…;Encrypt=true;
 ```
-*Verbindungsdetails aus myASP.NET Control Panel kopieren*
+*Verbindungsdetails aus dem myASP.NET Control Panel; Name des Connection-Strings: `iotweltdb`.*
 
 ---
 
-## 🔑 Entity Framework – Keine Änderungen nötig
+## 🚀 Deployment-Optionen bei myASP.NET (Phase 4)
 
-### Bestehende DbContext-Struktur bleibt erhalten
-```csharp
-public class ApplicationDbContext : IdentityDbContext<IdentityUser>
-{
-    public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
-        : base(options)
-    {
-    }
-
-    // Bestehende DbSets (unverändert)
-    public DbSet<YourEntity> YourEntities { get; set; }
-    public DbSet<AnotherEntity> AnotherEntities { get; set; }
-
-    protected override void OnModelCreating(ModelBuilder builder)
-    {
-        base.OnModelCreating(builder);
-        // Bestehende Konfiguration bleibt
-    }
-}
-```
-
-**WICHTIG:** `IdentityDbContext<IdentityUser>` erbt von `DbContext` und enthält Identity-Tabellen
-
----
-
-## 🔌 Dependency Injection – Keine Änderungen
-
-```csharp
-// Program.cs (DI-Container identisch)
-builder.Services.AddScoped<IYourService, YourService>();
-builder.Services.AddScoped<IAnotherService, AnotherService>();
-// ... bestehende Services bleiben unverändert
-```
-
-**EF Injection funktioniert weiter:**
-```csharp
-public class YourService
-{
-    private readonly ApplicationDbContext _context;
-    private readonly ILogger<YourService> _logger;
-
-    public YourService(ApplicationDbContext context, ILogger<YourService> logger)
-    {
-        _context = context;
-        _logger = logger;
-    }
-}
-```
-
----
-
-## 🌐 Web API – Auth-Anpassung erforderlich
-
-### Alte API (Entra ID Token)
-```csharp
-[ApiController]
-[Route("api/[controller]")]
-[Authorize]
-public class MyApiController : ControllerBase
-{
-    [HttpGet]
-    public IActionResult GetData()
-    {
-        var userId = User.GetObjectId(); // Entra ID spezifisch
-        return Ok();
-    }
-}
-```
-
-### Neue API (JWT oder Session)
-**Option A: Über Blazor Session (einfacher)**
-```csharp
-[ApiController]
-[Route("api/[controller]")]
-[Authorize]
-public class MyApiController : ControllerBase
-{
-    [HttpGet]
-    public IActionResult GetData()
-    {
-        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        var userName = User.FindFirst(ClaimTypes.Name)?.Value;
-        return Ok(new { userId, userName });
-    }
-}
-```
-
-**Option B: JWT-Token (wenn externe API-Clients nötig)**
-```csharp
-// Program.cs (zusätzlich)
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("YourSecretKey")),
-            ValidateIssuer = false,
-            ValidateAudience = false
-        };
-    });
-
-// Authentifizierungs-Endpoint (neuer Login-Endpoint)
-[HttpPost("login")]
-public async Task<IActionResult> Login([FromBody] LoginModel model)
-{
-    var user = await _userManager.FindByEmailAsync(model.Email);
-    if (user != null && await _userManager.CheckPasswordAsync(user, model.Password))
-    {
-        var token = GenerateJwtToken(user);
-        return Ok(new { token });
-    }
-    return Unauthorized();
-}
-```
-
----
-
-## 🖥️ Blazor Server – Minimal Changes
-
-### AuthorizeRouteView bleibt unverändert
-```razor
-<!-- _Host.cshtml oder Layouts/MainLayout.razor -->
-<CascadingAuthenticationState>
-    <Router AppAssembly="@typeof(Program).Assembly">
-        <Found Context="routeData">
-            <AuthorizeRouteView RouteData="@routeData" 
-                                DefaultLayout="@typeof(MainLayout)">
-                <NotAuthorized>
-                    <p>Bitte <a href="/Identity/Account/Login">anmelden</a></p>
-                </NotAuthorized>
-            </AuthorizeRouteView>
-        </Found>
-    </Router>
-</CascadingAuthenticationState>
-```
-
-### User Info abrufen
-```razor
-@page "/profile"
-@using System.Security.Claims
-@inject AuthenticationStateProvider AuthenticationStateProvider
-
-<h3>Benutzerprofil</h3>
-
-@if (user != null)
-{
-    <p>Name: @user.Identity?.Name</p>
-    <p>Email: @user.FindFirst(ClaimTypes.Email)?.Value</p>
-}
-
-@code {
-    private ClaimsPrincipal? user;
-
-    protected override async Task OnInitializedAsync()
-    {
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        user = authState.User;
-    }
-}
-```
-
----
-
-## 📝 Migrations-Checkliste
-
-### Phase 1: Vorbereitung (vor Code-Änderungen)
-- [ ] myASP.NET Pro Plan bestellt
-- [ ] teqpool.de mit myASP.NET verbunden
-- [ ] things.teqpool.net von Strato umgeleitet
-- [ ] SQL Server Connection String aus myASP.NET Control Panel kopiert
-- [ ] Entra ID Users exportieren (falls Import nötig)
-
-### Phase 2: Code-Änderungen
-- [ ] Program.cs: Entra ID → ASP.NET Identity umstellen
-- [ ] appsettings.json: Connection String aktualisieren
-- [ ] ApplicationDbContext: Auf IdentityDbContext<IdentityUser> erben
-- [ ] EF Migration erstellen: `InitialIdentity`
-- [ ] Web API Auth-Endpoints anpassen
-- [ ] Login/Register Pages (aus ASP.NET Identity Scaffolding) integrieren
-- [ ] Tests: Authentifizierung lokal testen
-
-### Phase 3: Datenbank
-- [ ] Lokal: `dotnet ef database update`
-- [ ] Bei myASP.NET: EF-Migration via Deployment anwenden
-- [ ] (Optional) Benutzer-Import skripten
-
-### Phase 4: Deployment & Testing
-- [ ] Lokal: Volle Funktionalität prüfen (Login, API, Blazor)
-- [ ] Visual Studio Publish Profil erstellen (Web Deploy zu myASP.NET)
-- [ ] Zu myASP.NET deployen
-- [ ] Test bei things.teqpool.net: Login, API-Calls, Blazor Components
-
-### Phase 5: Cleanup
-- [ ] Alte Azure App Service (optional) stillegen
-- [ ] Alte Entra ID App Registration (optional) deaktivieren
-
----
-
-## 🛠️ Wichtige Dateien zum Anpassen
-
-### Priorität 1 (Critical)
-- `Program.cs` – Auth-Konfiguration komplett neu
-- `appsettings.json` – Connection Strings
-- `ApplicationDbContext.cs` – Erbschaft anpassen
-
-### Priorität 2 (Required)
-- Web API Controller mit `[Authorize]` – Anspruchsadressen prüfen
-- Login/Register Seiten (aus Scaffolding oder bestehend)
-
-### Priorität 3 (Nice-to-have)
-- Entra ID Claims → ASP.NET Identity Claims Migration
-- JWT-Endpoint (falls externe API-Clients)
-
-### Nicht anfassen
-- Blazor Components (`.razor` Dateien)
-- Bestehende Services (IYourService, etc.)
-- Bestehende DbSets (YourEntity, etc.)
-
----
-
-## 🚀 Deployment-Optionen bei myASP.NET
-
-### Option A: GitHub Auto-Deploy (empfohlen)
-```bash
-# 1. Repository zu GitHub pushen
-# 2. myASP.NET Control Panel → Deployments → GitHub verbinden
-# 3. Automatischer Build & Deploy bei jedem Push
-# 4. Produktiv in ~2 Minuten
-```
+### Option A: GitHub Actions + Web Deploy (Ziel, Phase 3/4)
+Build und Tests in GitHub Actions, danach Web Deploy (MSDeploy) mit den Publish-Daten aus dem Control Panel
+als Repository-Secrets.
 
 ### Option B: Visual Studio Web Deploy
 ```
-Rechtsklick auf Projekt → Publish
-→ Hosting Typ: Web Deploy
-→ myASP.NET-Daten eingeben (aus Control Panel)
-→ Publish Button
+Rechtsklick auf Projekt → Publish → Web Deploy → myASP.NET-Daten aus dem Control Panel → Publish
 ```
 
 ### Option C: FTP
 ```bash
-# Lokal publishen
 dotnet publish -c Release
-
-# FTP-Client (z.B. FileZilla)
-# Verbinden mit myASP.NET FTP-Daten
-# /site/wwwroot hochladen
+# Ausgabe per FTP (z. B. FileZilla) nach /site/wwwroot hochladen
 ```
 
-**Empfehlung:** GitHub Auto-Deploy für Entwicklung, dann Web Deploy für Produktion
+API und Portal sind zwei Anwendungen (z. B. `api.things.teqpool.net` und `things.teqpool.net`).
 
 ---
 
 ## ⚙️ Konfiguration für myASP.NET
 
-### Environment Settings
-```json
-// appsettings.Production.json (neu)
-{
-  "ConnectionStrings": {
-    "DefaultConnection": "Server=sql.myasp.net;Database=teqpool_prod;User Id=xxx;Password=xxx;Encrypt=true;"
-  },
-  "Logging": {
-    "LogLevel": {
-      "Default": "Warning"
-    }
-  }
-}
-```
+Secrets kommen als Umgebungsvariablen über die `web.config` (`<aspNetCore><environmentVariables>`)
+bzw. die Einstellungen im Control Panel — **nicht** in `appsettings.Production.json`.
 
-### IIS Einstellungen (automatisch bei myASP.NET)
-- Application Pool: Dedicated
-- .NET Version: .NET 8
-- Authentication: Forms (ASP.NET Identity)
+| Anwendung | Variable | Inhalt |
+|---|---|---|
+| API | `ConnectionStrings__iotweltdb` | Connection-String (s. o.) |
+| API | `Jwt__SigningKey` | Base64, ≥ 32 Bytes, eigener Schlüssel je Umgebung |
+| API | `SeedAdmin__Email`, `SeedAdmin__Password` | erster Admin (nach dem ersten Start entfernen) |
+| API | `App__PortalBaseUrl` | `https://things.teqpool.net` (Links in Mails) |
+| Portal | `IotWeltApi__BaseUrl` | URL der API |
+| beide | `ASPNETCORE_ENVIRONMENT` | `Production` |
+
+### Offene Punkte für Produktion
+- **E-Mail-Versand:** `LoggingEmailSender` schreibt Bestätigungs-, Reset- und Einladungslinks nur ins Log.
+  Für Produktion braucht es einen echten Sender (SMTP von myASP.NET) — siehe `docs/backlog.md`.
+- **Portal-Sitzungen im Speicher:** Ein Neustart oder App-Pool-Recycle des Portals meldet alle ab.
+  Für Produktion: persistenter `ITokenStore` und Data-Protection-Schlüssel dauerhaft ablegen
+  (sonst sind auch die Cookies nach dem Recycle ungültig).
+- IIS: eigener Application Pool je Anwendung, .NET 10 Hosting Bundle muss beim Hoster verfügbar sein.
 
 ---
 
 ## ✅ Test-Szenarien
 
-### Szenario 1: Benutzer-Registrierung
-```
-1. things.teqpool.net/Identity/Account/Register aufrufen
-2. Email + Passwort eingeben
-3. Registrierung bestätigen
-4. Überprüfung: AspNetUsers Tabelle in SQL Studio
-```
-
-### Szenario 2: Login
-```
-1. things.teqpool.net/Identity/Account/Login
-2. Credentials eingeben
-3. Weiterleitung zu Dashboard
-4. Überprüfung: User.Identity.IsAuthenticated == true
-```
-
-### Szenario 3: Web API Call
-```
-1. Angemeldet bleiben
-2. JavaScript: fetch('/api/myapi/getdata')
-3. Überprüfung: Response mit Benutzerdaten
-```
-
-### Szenario 4: Autorisierung (Admin-only)
-```
-1. User ohne Admin-Rolle: /admin aufrufen
-2. Erwartet: Access Denied
-3. Admin hinzufügen: `_userManager.AddToRoleAsync(user, "Admin")`
-4. Nochmal versuchen: Should work
-```
-
----
-
-## 📚 Ressourcen & Referenzen
-
-### Offizielle Dokumentation
-- [ASP.NET Identity in Blazor](https://learn.microsoft.com/en-us/aspnet/core/security/authentication/identity-api-authorization)
-- [Entity Framework with Identity](https://learn.microsoft.com/en-us/aspnet/core/security/authentication/customize-identity-model)
-- [Authorize in Blazor](https://learn.microsoft.com/en-us/aspnet/core/blazor/security/)
-
-### myASP.NET
-- Knowledge Base: https://www.myasp.net/support/kb/root.aspx
-- SQL Studio: Im Control Panel unter Database Manager
-- Connection String Format: Im Control Panel → Databases
-
-### Hilfreich
-- EF Migrations: `dotnet ef migrations add <Name>`
-- User Secrets lokal: `dotnet user-secrets init`
-- Logging: `ILogger<T>` in Services
+1. **Registrierung:** `/account/register` → Bestätigungslink (aus dem Log) öffnen → Anmelden.
+   Prüfen: neuer Eintrag in `AspNetUsers`, Konto mit Login als Owner.
+2. **Login und Refresh:** Anmelden, länger als 15 min arbeiten — keine Abmeldung (Refresh im Hintergrund).
+3. **Mandantentrennung:** Zweiter Login sieht die Geräte des ersten nicht (automatisiert in `IotWelt.API.Tests`).
+4. **Einladung:** Owner lädt als Leser ein → Link annehmen → Kontowechsler zeigt beide Konten, Leser kann nichts ändern.
+5. **Admin:** Login ohne Admin-Rolle ruft `/admin/users` auf → kein Zugriff; nach „Zum Admin machen“ und
+   erneuter Anmeldung (bzw. spätestens nach 15 min) → Zugriff.
+6. **Sensor:** `POST /api/sensor` (Beispiel in `IotWelt.API.http`) → Gerät erscheint im Dashboard.
 
 ---
 
 ## ⚠️ Bekannte Fallstricke & Lösungen
 
-### Problem 1: Migration schlägt fehl
-```
-Error: Pending migrations detected
-Lösung: `dotnet ef database update` lokal vor Deployment
-```
+### API startet nicht: „Jwt:SigningKey fehlt“
+Lokal den AppHost-Parameter `jwt-signing-key` setzen, in Produktion die Env-Var `Jwt__SigningKey`.
 
-### Problem 2: Connection String zu lang oder ungültig
-```
-Fehler: `String not recognized as a valid Boolean value`
-Lösung: Encrypt=true; Connection Timeout=30; korrekt setzen
-```
+### Alle Sitzungen plötzlich beendet
+Ein Refresh-Token wurde zweimal vorgelegt (z. B. parallele Refreshs) → die API widerruft alle Sitzungen.
+Im Portal verhindert das die Sitzungssperre im `TokenSessionManager`; neue Clients (MAUI) brauchen dasselbe.
 
-### Problem 3: Benutzer können sich nicht anmelden
-```
-Überprüfung:
-1. AspNetUsers Tabelle hat die User-Einträge
-2. Password Hash mit CheckPasswordAsync korrekt
-3. Rollen korrekt in AspNetUserRoles
-```
+### Rechte-Änderung wirkt nicht sofort
+Rollen stehen im Access-Token und werden erst beim nächsten Refresh (spätestens nach 15 min) neu gelesen.
 
-### Problem 4: Web API gibt 401 Unauthorized
-```
-Überprüfung:
-1. [Authorize] auf Controller/Action
-2. User.Identity.IsAuthenticated == true (in Blazor)
-3. Cookie gesetzt im HTTP-Request
-```
+### Migration schlägt fehl
+Lokal vor dem Deployment `Update-Database`; bei myASP.NET nur das idempotente Skript verwenden.
+
+### Connection String ungültig
+`Encrypt=true;` und ggf. `Connection Timeout=30;` setzen, Werte aus dem Control Panel übernehmen.
 
 ---
 
-## 📊 Erfolgs-Kriterien für v2.0
+## 📝 Checkliste
 
-- [x] Localhost läuft fehlerfrei
-- [x] Blazor Server + Web API authentifizieren sich gegenseitig
-- [x] SQL Server auf myASP.NET mit gültigen Benutzer-Tabellen
-- [x] Deployment zu things.teqpool.net erfolgreich
-- [x] Login, API-Calls, Autorisierung bei things.teqpool.net funktionieren
-- [x] EF Queries funktionieren gegen neue Datenbank
+### Phase 1 – Benutzerverwaltung (erledigt, v0.5.0)
+- [x] Identity in der API, eigene Token-Ausgabe, Migrationsbasis `InitialV2`
+- [x] Konten, Mitgliedschaften, Einladungen, Admin-Login-Verwaltung
+- [x] Portal ohne Entra ID, Anmeldung gegen die API
+- [x] Entra-ID-, Graph- und `AzureAd`-Reste entfernt
+- [x] Integrationstests mit echten Tokens (Testcontainers)
 
----
-
-## 🎓 Nächste Schritte für Claude Code
-
-1. **Projekt-Struktur analysieren:** `dotnet list package` + Ordner-Layout
-2. **Program.cs refaktorieren** mit Auth-Umstieg
-3. **appsettings.json** vorbereiten
-4. **ApplicationDbContext.cs** auf IdentityDbContext anpassen
-5. **Web API Endpoints** auf neue Authentifizierung prüfen
-6. **Login/Register Seiten** vorbereiten (Scaffolding oder bestehend?)
-7. **Lokales Testen** mit `dotnet run`
-8. **Migrations erstellen & anwenden**
-
-**Wichtig:** Dieses Dokument in deinen Projekt-Ordner ablegen, damit Claude Code es als Kontext hat!
+### Phase 4 – myASP.NET
+- [ ] myASP.NET-Plan bestellt, teqpool.de verbunden, things.teqpool.net umgeleitet
+- [ ] Datenbank angelegt, idempotentes Migrationsskript eingespielt
+- [ ] Env-Vars gesetzt (Tabelle oben), Admin-Seed nach dem ersten Start entfernt
+- [ ] Echter E-Mail-Versand, persistente Portal-Sitzungen und Data-Protection-Schlüssel
+- [ ] API und Portal deployt, Test-Szenarien bei things.teqpool.net durchgespielt
 
 ---
 
-## 📧 Kontakt & Fragen
-
-Bei Fragen zur Migration: Claude Code kann dieses Dokument als Referenz nutzen.
-
-**Version:** 2.0 Migration Spec  
-**Letztes Update:** September 2026  
-**Status:** Ready for Implementation
+## 📚 Ressourcen & Referenzen
+- [Identity für APIs und SPAs](https://learn.microsoft.com/aspnet/core/security/authentication/identity-api-authorization)
+- [Blazor Security](https://learn.microsoft.com/aspnet/core/blazor/security/)
+- [ASP.NET Core auf IIS hosten](https://learn.microsoft.com/aspnet/core/host-and-deploy/iis/)
+- [Data Protection konfigurieren](https://learn.microsoft.com/aspnet/core/security/data-protection/configuration/overview)
+- myASP.NET Knowledge Base: https://www.myasp.net/support/kb/root.aspx
