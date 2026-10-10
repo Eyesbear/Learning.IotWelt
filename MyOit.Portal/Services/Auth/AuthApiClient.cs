@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using IotWelt.Common.Auth;
+using IotWelt.Common.Members;
 using Microsoft.AspNetCore.Http;
 
 namespace MyOit.Portal.Services.Auth;
@@ -92,6 +93,20 @@ public sealed class AuthApiClient(HttpClient http)
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         var response = await http.SendAsync(request, ct);
         return await ReadTokenResultAsync(response, ct);
+    }
+
+    // C5 (eigentlich /api/members): hier, weil der Formular-Endpoint /account/transfer-ownership außerhalb
+    // einer Komponente läuft und danach ohnehin Tokens und Cookie erneuert. 400 = Ziel ist schon Owner,
+    // 409 MemberErrors.NotOwner, 403 = Token sagt nicht Owner. 404 (Mitglied weg) wird zur Exception.
+    public async Task<AuthResult> TransferOwnershipAsync(string accessToken, string userId, CancellationToken ct = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/members/transfer-ownership")
+        {
+            Content = JsonContent.Create(new TransferOwnershipRequest(userId)),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        var response = await http.SendAsync(request, ct);
+        return response.IsSuccessStatusCode ? new AuthResult(true) : await ReadFailureAsync(response, ct);
     }
 
     public async Task<MeResponse> GetMeAsync(string accessToken, CancellationToken ct = default)

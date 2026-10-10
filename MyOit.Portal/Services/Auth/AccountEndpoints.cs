@@ -58,6 +58,45 @@ public static class AccountEndpoints
             }
         });
 
+        // C5 als Formular-POST statt im Circuit: Nach der Übertragung ist der Login nur noch Editor, Token und
+        // Cookie sagen aber noch "Owner" — beides wird hier sofort erneuert (Cookie geht nur im HTTP-Request).
+        account.MapPost("/transfer-ownership", async (
+            [FromForm] string userId,
+            HttpContext httpContext, ClaimsPrincipal user,
+            TokenSessionManager sessions, AuthApiClient authApi, PortalSignInService signIn,
+            ILoggerFactory loggers) =>
+        {
+            var sessionId = user.FindFirst(PortalClaims.SessionId)?.Value;
+            var accessToken = sessionId is null ? null : await sessions.GetAccessTokenAsync(sessionId);
+            if (accessToken is null)
+                return TypedResults.LocalRedirect("~/account/login");
+
+            AuthResult result;
+            try
+            {
+                result = await authApi.TransferOwnershipAsync(accessToken, userId, httpContext.RequestAborted);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+            {
+                // Auch 404: Das Mitglied wurde inzwischen entfernt
+                loggers.CreateLogger(typeof(AccountEndpoints)).LogWarning(ex, "Übertragung der Eigentümerschaft fehlgeschlagen");
+                return TypedResults.LocalRedirect("~/account/members?transfer=failed");
+            }
+
+            if (!result.Succeeded)
+                return TypedResults.LocalRedirect("~/account/members?transfer=failed");
+
+            var tokens = await sessions.RenewTokensAsync(sessionId!);
+            if (tokens is null)
+            {
+                await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                return TypedResults.LocalRedirect("~/account/login");
+            }
+
+            await signIn.RenewCookieAsync(httpContext, sessionId!, tokens);
+            return TypedResults.LocalRedirect("~/account/members?transfer=done");
+        });
+
         return endpoints;
     }
 

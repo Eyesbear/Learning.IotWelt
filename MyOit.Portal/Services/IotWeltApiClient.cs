@@ -1,5 +1,6 @@
 using IotWelt.Common;
 using IotWelt.Common.Auth;
+using IotWelt.Common.Members;
 using MyOit.Portal.Services.Auth;
 using System.Net;
 using System.Net.Http.Json;
@@ -16,6 +17,40 @@ public class IotWeltApiClient([FromKeyedServices(IotWeltApiClient.HttpClientName
     public async Task<List<AccountSummaryDto>> GetMyAccountsAsync()
     {
         return await http.GetFromJsonAsync<List<AccountSummaryDto>>("/api/auth/accounts") ?? [];
+    }
+
+    // C1: Mitglieder und offene Einladungen des aktiven Kontos (nur Owner, sonst 403)
+    public async Task<MembersOverviewDto> GetMembersAsync()
+    {
+        return (await http.GetFromJsonAsync<MembersOverviewDto>("/api/members"))!;
+    }
+
+    // B1: 400 = E-Mail/Rolle ungültig, 409 MemberErrors.AlreadyMember. Erneutes Einladen derselben
+    // Adresse ersetzt die offene Einladung (neuer Link, alter wird ungültig).
+    public async Task<AuthResult> InviteMemberAsync(string email, string role)
+    {
+        var response = await http.PostAsJsonAsync("/api/members/invitations", new InviteMemberRequest(email, role));
+        return await ToResultAsync(response, default);
+    }
+
+    public async Task<AuthResult> RevokeInvitationAsync(int invitationId)
+    {
+        var response = await http.DeleteAsync($"/api/members/invitations/{invitationId}");
+        return await ToResultAsync(response, default);
+    }
+
+    // C2: nur Editor ↔ Reader; wirkt beim nächsten Token-Refresh des Mitglieds
+    public async Task<AuthResult> ChangeMemberRoleAsync(string userId, string role)
+    {
+        var response = await http.PutAsJsonAsync($"/api/members/{Uri.EscapeDataString(userId)}/role", new ChangeMemberRoleRequest(role));
+        return await ToResultAsync(response, default);
+    }
+
+    // C3: Zugriff entziehen; wirkt beim nächsten Token-Refresh des Mitglieds
+    public async Task<AuthResult> RemoveMemberAsync(string userId)
+    {
+        var response = await http.DeleteAsync($"/api/members/{Uri.EscapeDataString(userId)}");
+        return await ToResultAsync(response, default);
     }
 
     // C4: aktives Konto samt Geräten und Messwerten löschen. Fehlercode MemberErrors.NotOwner (409) oder
@@ -111,11 +146,16 @@ public class IotWeltApiClient([FromKeyedServices(IotWeltApiClient.HttpClientName
         response.EnsureSuccessStatusCode();
     }
 
+    // Vom Portal vergeben: Mitglied/Einladung gibt es nicht (mehr) — z. B. in einem anderen Tab schon entfernt
+    public const string NotFoundErrorCode = "not_found";
+
     // 401 als Exception wie bei den übrigen Aufrufen — die Seiten leiten dann zum Login
     private static async Task<AuthResult> ToResultAsync(HttpResponseMessage response, CancellationToken ct)
     {
         if (response.IsSuccessStatusCode)
             return new AuthResult(true);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return new AuthResult(false, NotFoundErrorCode);
         if (response.StatusCode == HttpStatusCode.Unauthorized)
             response.EnsureSuccessStatusCode();
         return await AuthApiClient.ReadFailureAsync(response, ct);
