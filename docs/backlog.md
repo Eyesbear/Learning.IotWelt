@@ -28,6 +28,11 @@ Erledigte Punkte werden gestrichen und im CHANGELOG erwähnt.
 
 ## Produktion (Phase 4)
 
+- **`UseHttpsRedirection` und der ESP32** *(aus 2b)* — die Firmware sendet per HTTP an `POST /api/sensor`.
+  Hat die Produktion (IIS) einen HTTPS-Port, leitet die API um (307), und der ESP32 folgt dem nicht oder nur
+  ohne TLS-Prüfung. Klären: Sensor-Endpoint von der Umleitung ausnehmen oder Firmware auf HTTPS umstellen.
+  In Staging (nur HTTP) leitet die Middleware nicht um und loggt nur „Failed to determine the https port“.
+
 - **SMTP-Zugangsdaten von myASP.NET** eintragen *(aus 2a)* — der `SmtpEmailSender` ist fertig, es fehlen
   nur Host/Port/Security/User/Password/From als Env-Vars in der Produktion.
 - **Mailversand fehlgeschlagen → 500 nach angelegtem Login** *(aus 2a)* — ist der SMTP-Server nicht erreichbar,
