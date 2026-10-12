@@ -28,7 +28,12 @@ Erledigte Punkte werden gestrichen und im CHANGELOG erwähnt.
 
 ## Produktion (Phase 4)
 
-- **Kein echter E-Mail-Versand** — `LoggingEmailSender` schreibt Bestätigungs-, Reset- und Einladungslinks nur ins Log.
-  Für Staging/Produktion einen SMTP-Sender (myASP.NET) anbinden.
+- **SMTP-Zugangsdaten von myASP.NET** eintragen *(aus 2a)* — der `SmtpEmailSender` ist fertig, es fehlen
+  nur Host/Port/Security/User/Password/From als Env-Vars in der Produktion.
+- **Mailversand fehlgeschlagen → 500 nach angelegtem Login** *(aus 2a)* — ist der SMTP-Server nicht erreichbar,
+  existiert der Login schon, die Registrierung meldet aber einen Fehler. Zusammen mit „Bestätigungsmail erneut
+  senden“ lösen (Fehler loggen, Hinweis an den Nutzer).
+- **Data-Protection-Schlüssel unverschlüsselt im Verzeichnis** *(aus 2a)* — unter Linux ohne XML-Encryptor
+  (Warnung beim Start). Für Staging akzeptiert; für Produktion Schutz klären (z. B. Zertifikat).
 - **Portal-Sitzungen nur im Speicher** — Neustart oder App-Pool-Recycle meldet alle ab. Persistenten `ITokenStore`
-  und dauerhaft abgelegte Data-Protection-Schlüssel vorsehen (auch für Docker-Staging relevant).
+  vorsehen. Die Data-Protection-Schlüssel sind seit 2a per `DataProtection:KeysPath` dauerhaft ablegbar.

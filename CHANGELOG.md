@@ -8,6 +8,16 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+### Added
+- **Echter Mailversand per SMTP** (`SmtpEmailSender`, MailKit) für Bestätigungs-, Reset- und Einladungsmails, mit Text- und HTML-Teil. Aktiv, sobald `Smtp:Host` gesetzt ist (Section `Smtp`: Host, Port, Security, User, Password, From); ohne bleibt der `LoggingEmailSender`
+- **Mailpit** im AppHost (`axllent/mailpit:v1.31`): Lokal landen alle Mails der API dort, die Web-UI ist im Aspire-Dashboard verlinkt
+- Data-Protection-Schlüssel von API und Portal werden in einem Verzeichnis abgelegt, wenn `DataProtection:KeysPath` gesetzt ist (Vorbereitung für Container-Volumes). So bleiben Cookies, Antiforgery-Tokens und Bestätigungslinks über Neustarts hinweg gültig
+- `appsettings.Staging.json` für API und Portal (Log-Level, Schlüsselpfad `/keys`, API-Adresse `http://api:8080` für Compose)
+- 2 DI-Tests für die Auswahl des Mail-Senders (gesamt 93)
+
+### Changed
+- Die Health-Endpoints `/health` und `/alive` gibt es jetzt auch in der Umgebung `Staging` (für Container-Healthchecks), in Production weiterhin nicht
+
 ---
 
 ## [0.5.0] — 2026-10-10 — Phase 1: eigene Benutzerverwaltung (v2.0 im Umbau)

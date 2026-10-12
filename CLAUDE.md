@@ -50,7 +50,8 @@ Geplant: `IotWelt.Maui` (Android/Windows).
   (`AccountEndpoints.cs`, Antiforgery-Pflicht per Endpoint-Filter — `UseAntiforgery()` allein blockiert nicht).
 - **401 von der API** → Seite ruft `Navigation.NavigateToLogin()` (Rücksprung auf die Seite).
 - **Secrets:** `Jwt:SigningKey` (Base64, ≥ 32 Bytes) lokal als AppHost-Parameter, `SeedAdmin:Email`/`Password`
-  in den User-Secrets der API. Mails (Bestätigung, Reset, Einladung) werden derzeit nur geloggt (`LoggingEmailSender`).
+  in den User-Secrets der API. Mails (Bestätigung, Reset, Einladung) gehen per SMTP raus, sobald `Smtp:Host` gesetzt ist
+  (`SmtpEmailSender`; lokal setzt der AppHost Mailpit), sonst nur ins Log (`LoggingEmailSender`).
 
 ## Bauen, Testen, Starten
 ```powershell
