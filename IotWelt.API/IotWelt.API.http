@@ -1,7 +1,23 @@
-@IotWelt.API_HostAddress = http://localhost:5013
+# Zieladresse kommt aus http-client.env.json: oben rechts im Editor die Umgebung wählen,
+# "aspire" (lokal, Port 5013) oder "staging" (Container, Port 5080).
+# Hier KEIN @IotWelt.API_HostAddress setzen, eine Variable in der Datei hätte Vorrang vor der Umgebung.
 
-GET {{IotWelt.API_HostAddress}}/weatherforecast/
-Accept: application/json
+### Health (nur Development und Staging)
+GET {{IotWelt.API_HostAddress}}/health
+
+### Sensordaten wie vom ESP32 (anonym; customer_id mit Unterstrich, Rest camelCase)
+# customer_id leer = Gerät ohne Besitzer, sonst die Kundenkennung aus GET /api/customers/me
+POST {{IotWelt.API_HostAddress}}/api/sensor
+Content-Type: application/json
+
+{
+  "hardwareId": "TEST-HTTP-0001",
+  "customer_id": "",
+  "deviceName": "Testsensor aus .http",
+  "temperatur": 21.5,
+  "relativeFeuchte": 45.0,
+  "wasserAlarm": false
+}
 
 ###
 
