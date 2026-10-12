@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -97,6 +98,23 @@ public static class Extensions
         return builder;
     }
 
+    // Data-Protection-Schlüssel (Cookies, Antiforgery, Identity-Links) dauerhaft ablegen, wenn
+    // DataProtection:KeysPath gesetzt ist (Container-Volume). Ohne den Wert bleibt alles beim Default,
+    // damit Aspire und Tests unverändert laufen. Der feste Anwendungsname hält die Schlüssel gültig,
+    // auch wenn sich der Inhaltspfad ändert.
+    public static TBuilder AddPersistentDataProtection<TBuilder>(this TBuilder builder) where TBuilder : IHostApplicationBuilder
+    {
+        var keysPath = builder.Configuration["DataProtection:KeysPath"];
+        if (!string.IsNullOrWhiteSpace(keysPath))
+        {
+            builder.Services.AddDataProtection()
+                .PersistKeysToFileSystem(new DirectoryInfo(keysPath))
+                .SetApplicationName(builder.Environment.ApplicationName);
+        }
+
+        return builder;
+    }
+
     public static TBuilder AddDefaultHealthChecks<TBuilder>(this TBuilder builder) where TBuilder : IHostApplicationBuilder
     {
         builder.Services.AddHealthChecks()
@@ -110,7 +128,8 @@ public static class Extensions
     {
         // Adding health checks endpoints to applications in non-development environments has security implications.
         // See https://aka.ms/dotnet/aspire/healthchecks for details before enabling these endpoints in non-development environments.
-        if (app.Environment.IsDevelopment())
+        // Staging (Docker Compose im LAN) braucht sie für die Container-Healthchecks, Production weiterhin nicht.
+        if (app.Environment.IsDevelopment() || app.Environment.IsStaging())
         {
             // All health checks must pass for app to be considered ready to accept traffic after starting
             app.MapHealthChecks(HealthEndpointPath);
