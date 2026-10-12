@@ -69,8 +69,7 @@ builder.Services.AddScoped<CurrentAccount>();
 builder.Services.AddScoped<AccountService>();
 builder.Services.AddScoped<TokenService>();
 builder.Services.AddScoped<InvitationService>();
-builder.Services.AddTransient<IEmailSender<AppUser>, LoggingEmailSender>();
-builder.Services.AddTransient<IInvitationEmailSender, LoggingEmailSender>();
+builder.Services.AddEmailSenders(builder.Configuration);
 
 var app = builder.Build();
 

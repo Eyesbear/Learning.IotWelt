@@ -3,8 +3,8 @@ using Microsoft.AspNetCore.Identity;
 
 namespace IotWelt.API.Services;
 
-// Platzhalter bis Phase 4 (SMTP bei myASP.NET): schreibt die Links ins Log statt sie zu versenden.
-// Lokal im Aspire-Dashboard unter "Console logs" bzw. "Structured logs" der API zu finden.
+// Fallback ohne Smtp:Host (siehe AddEmailSenders): schreibt die Links ins Log statt sie zu versenden.
+// Im Aspire-Dashboard unter "Console logs" bzw. "Structured logs" der API zu finden.
 public class LoggingEmailSender(ILogger<LoggingEmailSender> logger) : IEmailSender<AppUser>, IInvitationEmailSender
 {
     public Task SendConfirmationLinkAsync(AppUser user, string email, string confirmationLink)
