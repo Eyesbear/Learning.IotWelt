@@ -9,6 +9,11 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 ## [Unreleased]
 
 ### Added
+- **Container-Images** für API, Migrator und Portal: `IotWelt.API/Dockerfile` (Stufen `build`, `migrator`, `final`) und `MyOit.Portal/Dockerfile`, Multi-Stage-Build mit Restore-Layer vor dem Quellcode, Nicht-Root-User, Port 8080, Verzeichnis `/keys` für Data-Protection-Schlüssel
+- **Migrator** als EF-Core-Migrations-Bundle (framework-dependent auf `aspnet:10.0`, teilt sich die Basis-Layer mit der API): legt das Schema an und endet, die API selbst ändert das Schema nie
+- `.dockerignore` im Repo-Root (`bin/`, `obj/`, `.vs/`, `.git/`, Secrets, `.env`)
+- `docs/staging.md`: Images, Umgebungsvariablen, Review-Checkliste für Dockerfiles, Übungen (Größen, Layer-Cache, Handbetrieb ohne Compose)
+- `IotWelt.API.http`: Health- und Sensor-Request; die Zieladresse kommt jetzt aus `http-client.env.json` mit den Umgebungen `aspire` (5013) und `staging` (5080), Auswahl per Dropdown im VS-Editor
 - **Echter Mailversand per SMTP** (`SmtpEmailSender`, MailKit) für Bestätigungs-, Reset- und Einladungsmails, mit Text- und HTML-Teil. Aktiv, sobald `Smtp:Host` gesetzt ist (Section `Smtp`: Host, Port, Security, User, Password, From); ohne bleibt der `LoggingEmailSender`
 - **Mailpit** im AppHost (`axllent/mailpit:v1.31`): Lokal landen alle Mails der API dort, die Web-UI ist im Aspire-Dashboard verlinkt
 - Data-Protection-Schlüssel von API und Portal werden in einem Verzeichnis abgelegt, wenn `DataProtection:KeysPath` gesetzt ist (Vorbereitung für Container-Volumes). So bleiben Cookies, Antiforgery-Tokens und Bestätigungslinks über Neustarts hinweg gültig
