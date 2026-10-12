@@ -11,6 +11,7 @@ using Scalar.AspNetCore;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
+builder.AddPersistentDataProtection();
 
 builder.AddSqlServerDbContext<AppDbContext>("iotweltdb");
 

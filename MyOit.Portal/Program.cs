@@ -10,6 +10,7 @@ using Radzen;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
+builder.AddPersistentDataProtection();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
