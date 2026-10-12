@@ -1,0 +1,11 @@
+# Build-Kontext ist das Repo-Root. Alles hier Gelistete schickt "docker build" gar nicht erst an den Daemon:
+# kleinerer Kontext, schnellerer Build, und lokale Artefakte oder Secrets landen nie im Image.
+**/bin/
+**/obj/
+.vs/
+.git/
+.claude/
+**/*.user
+**/secrets.json
+.env
+**/appsettings.Development.json
