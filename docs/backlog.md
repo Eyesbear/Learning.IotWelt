@@ -19,7 +19,17 @@ Erledigte Punkte werden gestrichen und im CHANGELOG erwähnt.
 - **Reset-Code prüfen ohne Verbrauch** fehlt *(aus 1d)* — die Reset-Seite merkt erst beim Absenden,
   dass der Link abgelaufen ist.
 
+- **Keine Prüfung der Akkuspannung** *(aus Sensor-Payload S1/S2/Akku)* — die API speichert jeden Wert,
+  auch unplausible (z. B. 0 V oder 12 V bei einem 18650). Idee: Werte außerhalb ~2,5–4,3 V loggen bzw. verwerfen.
+
 ## Portal
+
+- **Akku-Warnung fehlt** *(aus Sensor-Payload S1/S2/Akku)* — die Kachel zeigt nur die Spannung. Ein 18650 ist
+  unter ~3,4 V fast leer; Warnfarbe ab Schwelle (konfigurierbar wie `OfflineAfterMinutes`), später ggf. Prozentanzeige
+  und Benachrichtigung (siehe Alarme in `docs/user-stories/benutzerverwaltung.md`).
+- **S1/S2 haben keine Namen** *(aus Sensor-Payload S1/S2/Akku)* — „S1 aktiv“ sagt nichts darüber, was angeschlossen
+  ist (Tür, Wassermelder …). Idee: Bezeichnung pro Gerät und Eingang in den Gerätestammdaten.
+- **Kontakte und Akku nicht im Verlauf** — `KlimaVerlaufPunkt` enthält nur Temperatur und Feuchte.
 
 - **Logins ohne Konto** *(gefunden in 1e)* — Dashboard, Geräte und Profil setzen ein aktives Konto voraus.
   Braucht eine Hinweisseite („Sie gehören keinem Konto an“) und den API-Endpoint oben.

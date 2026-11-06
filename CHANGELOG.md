@@ -19,9 +19,21 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 - Data-Protection-Schlüssel von API und Portal werden in einem Verzeichnis abgelegt, wenn `DataProtection:KeysPath` gesetzt ist (Vorbereitung für Container-Volumes). So bleiben Cookies, Antiforgery-Tokens und Bestätigungslinks über Neustarts hinweg gültig
 - `appsettings.Staging.json` für API und Portal (Log-Level, Schlüsselpfad `/keys`, API-Adresse `http://api:8080` für Compose)
 - 2 DI-Tests für die Auswahl des Mail-Senders (gesamt 93)
+- **Sensor-Payload für die neue Hardware**: `POST /api/sensor` nimmt `batterieSpannung` (18650-Akku in Volt, `null` = ohne Akku) und die Kontakteingänge `s1Input`/`s2Input` an. Die Werte werden in `RaumKlimaLogs` gespeichert und über `GET /api/devices/dashboard` ausgeliefert
+- Dashboard-Kachel zeigt S1/S2 (aktiv gelb hervorgehoben) und die Akkuspannung, wenn eine gemeldet wird
+- Test für den Payload der alten Firmware (gesamt 94)
 
 ### Changed
 - Die Health-Endpoints `/health` und `/alive` gibt es jetzt auch in der Umgebung `Staging` (für Container-Healthchecks), in Production weiterhin nicht
+
+### Removed
+- `wasserAlarm` im Sensor-Payload und die Spalte `RaumKlimaLogs.Wassertank` samt Anzeige im Dashboard: Der Wasseralarm war zu speziell, an seine Stelle treten die allgemeinen Kontakteingänge. Ältere Firmware sendet das Feld weiter, die API ignoriert es (S1/S2 = `false`, Akku = `null`)
+
+### Security
+- Verwundbare transitive Pakete fest auf sichere Versionen angehoben: `System.Security.Cryptography.Pkcs` 10.0.14 (API, Tests, AppHost), `Microsoft.OpenApi` 2.13.0 (API, Tests), `MessagePack` 2.5.307 (AppHost)
+
+### Migrations
+- `SensorKontakteUndAkku`: entfernt `Wassertank` und legt `BatterieSpannung` (`float NULL`), `S1Input` und `S2Input` (`bit NOT NULL`, Default `0`) an. **Die bisherigen Wasseralarm-Werte gehen verloren.** EF hatte ein `RenameColumn` Wassertank → S2Input erzeugt, das wurde von Hand durch Drop + Add ersetzt
 
 ---
 
