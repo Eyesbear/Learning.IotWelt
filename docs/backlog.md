@@ -50,5 +50,14 @@ Erledigte Punkte werden gestrichen und im CHANGELOG erwähnt.
   senden“ lösen (Fehler loggen, Hinweis an den Nutzer).
 - **Data-Protection-Schlüssel unverschlüsselt im Verzeichnis** *(aus 2a)* — unter Linux ohne XML-Encryptor
   (Warnung beim Start). Für Staging akzeptiert; für Produktion Schutz klären (z. B. Zertifikat).
-- **Portal-Sitzungen nur im Speicher** — Neustart oder App-Pool-Recycle meldet alle ab. Persistenten `ITokenStore`
-  vorsehen. Die Data-Protection-Schlüssel sind seit 2a per `DataProtection:KeysPath` dauerhaft ablegbar.
+- **Portal-Sitzungen nur im Speicher** — Neustart oder App-Pool-Recycle meldet alle ab (in Staging seit 2c sichtbar:
+  `docker compose restart portal` erzwingt Neuanmeldung). Persistenten `ITokenStore` vorsehen, z. B. Tabelle in einer
+  eigenen kleinen DB des Portals oder verschlüsselt per Data Protection in einem Verzeichnis. Die Refresh-Tokens
+  darin sind so wertvoll wie Passwörter: nur verschlüsselt ablegen, abgelaufene Sitzungen aufräumen.
+  Die Data-Protection-Schlüssel sind seit 2a per `DataProtection:KeysPath` dauerhaft ablegbar.
+
+## Staging
+
+- **Futro als Staging-Host** *(aus 2c, offen)* — vor dem Umzug Ressourcen prüfen: SQL Server 2022 braucht x64 und
+  mindestens 2 GB RAM, dazu API, Portal, Mailpit und Dashboard. Images per `docker save | ssh … docker load` oder
+  `docker context` über SSH übertragen (Registry erst in Phase 3).
