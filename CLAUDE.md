@@ -97,7 +97,8 @@ betroffene Seite/Endpoint einmal real ausprobiert, `CHANGELOG.md` ergänzt.
 ## ESP32-Integration
 - Firmware: `D:\WORK\VS_Development\ComplexProjects\ESP32Configuration_Complex\ESP32_KlimaSensor`
 - Payload an `POST /api/sensor`:
-  `{ "hardwareId": "...", "customer_id": "...", "deviceName": "...", "temperatur": 21.5, "relativeFeuchte": 45.0, "wasserAlarm": false }`
+  `{ "hardwareId": "...", "customer_id": "...", "deviceName": "...", "temperatur": 21.5, "relativeFeuchte": 45.0, "batterieSpannung": 3.85, "s1Input": false, "s2Input": false }`
+  `batterieSpannung` (18650-Akku, Volt) ist `null`, wenn das Gerät keinen Akku hat; `s1Input`/`s2Input` sind die Kontakteingänge.
   **Achtung:** `customer_id` mit Unterstrich (`[JsonPropertyName]` in `SensorDataDto`), alle anderen Felder camelCase.
 - Gerät wird primär über `hardwareId` erkannt (Auto-Create), `customer_id`/`deviceName` sind Fallback.
 - Ein Gerät mit Besitzer wird über den Sensor-Endpoint **nie umgehängt** (nur Erstzuordnung herrenloser Geräte).

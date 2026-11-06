@@ -137,7 +137,7 @@ Prüfen:
   Mit leerem `customer_id` entsteht ein Gerät ohne Besitzer. Soll es im eigenen Dashboard erscheinen, die
   Kundenkennung aus dem Portal-Profil eintragen. Ohne VS geht es auch per PowerShell:
   ```powershell
-  Invoke-RestMethod -Method Post -Uri http://localhost:5080/api/sensor -ContentType 'application/json' -Body '{"hardwareId":"TEST-HTTP-0001","customer_id":"","deviceName":"Testsensor","temperatur":21.5,"relativeFeuchte":45.0,"wasserAlarm":false}'
+  Invoke-RestMethod -Method Post -Uri http://localhost:5080/api/sensor -ContentType 'application/json' -Body '{"hardwareId":"TEST-HTTP-0001","customer_id":"","deviceName":"Testsensor","temperatur":21.5,"relativeFeuchte":45.0,"batterieSpannung":3.85,"s1Input":false,"s2Input":true}'
   ```
 - `http://localhost:5081` im Browser: registrieren, der Bestätigungslink steht im Log (`docker logs api`)
 
