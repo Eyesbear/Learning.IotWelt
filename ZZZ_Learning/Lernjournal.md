@@ -134,3 +134,77 @@ In Phase 1 werde ich definitiv mehr Zwischenfragen stellen.
 - [x] Blazor Server mit Cookie-Sitzung und serverseitiger Token-Verwaltung, CSRF-Schutz
 - [x] Parallele Entwicklung mit Git-Worktrees, Merge-Konflikte selbst aufgelöst
 - [x] Agentic Coding: parallele Agent-Sitzungen mit schriftlichem Schnittstellen-Vertrag
+
+---
+
+## Phase 2 — Docker/Compose-Staging · 2026-10-12 bis 2026-11-06
+
+> **ENTWURF (Claude)** — Fakten und Agent-Bilanz aus Git-Historie und der Sitzung vom 2026-11-06.
+> Für die Sitzungen vom 2026-10-12 (2a, 2b) liegen dem Agenten keine Protokolle vor: dort bitte eigene
+> Erinnerungen ergänzen. „Meine Erkenntnisse“ und „Lebenslauf-tauglich“ sind nur Leitfragen.
+
+### Fakten
+- **2a (#9):** Apps staging-tauglich gemacht: echter Mailversand per SMTP (`SmtpEmailSender`, MailKit),
+  **Mailpit** im AppHost fängt lokal alle Mails ab, Data-Protection-Schlüssel in einem Verzeichnis
+  (`DataProtection:KeysPath`), `appsettings.Staging.json`, Health-Endpoints auch in `Staging`.
+- **2b (#11):** **Container-Images** für API, Migrator und Portal. Multi-Stage-Build mit Restore-Layer vor dem
+  Quellcode, Nicht-Root-User, Port 8080. Der **Migrator** ist ein EF-Core-Migrations-Bundle: er legt das Schema
+  an und endet, die API ändert das Schema nie. `.dockerignore` im Repo-Root, `.http` mit Umgebungen `aspire`/`staging`.
+- **2c (#13):** **`compose.yaml`** mit SQL Server, Migrator, API (5080), Portal (5081), Mailpit und
+  Aspire-Dashboard standalone. Start in fester Reihenfolge über Healthchecks (`sql` healthy → Migrator Exit 0 →
+  `api` healthy → `portal`), Secrets in `.env` (Vorlage `.env.example`), Runbook in `docs/staging.md`.
+- **Zwischendurch (#12):** Neue Sensor-Hardware: Kontakteingänge S1/S2 und 18650-Akku statt Wasseralarm.
+  Payload, DB-Spalten, Dashboard-Kachel und Tests angepasst, der alte Firmware-Payload wird weiter angenommen
+  (eigener Test). Migration `SensorKontakteUndAkku` von Hand korrigiert (siehe Agent-Bilanz Nr. 1).
+- **Sicherheitsupdates:** Von VS als verwundbar gemeldete transitive Pakete selbst auf sichere Versionen
+  angehoben (`System.Security.Cryptography.Pkcs`, `Microsoft.OpenApi`, `MessagePack`), als eigener `chore`-Commit.
+- **Zwei parallele Branches** (Compose und Sensor) auf demselben `master`-Stand, mit Überschneidungen in
+  CHANGELOG, Backlog und `docs/staging.md`. Sensor zuerst gemergt, dann den Compose-Branch per `git rebase master`
+  nachgezogen und die Konflikte selbst aufgelöst.
+- PRs per **„Rebase and merge“**: die Commits bekommen auf `master` neue Hashes, darum lokale Branches mit
+  `git branch -D` löschen und Tags erst nach `git pull` auf `master` setzen.
+- Release 0.6.0 (`Directory.Build.props`, CHANGELOG, CLAUDE.md-Stand).
+
+### Agent-Bilanz
+
+**Gut gelaufen**
+- **Fremde Änderungen erkannt:** Drei geänderte `.csproj`-Dateien im Diff, die nicht vom Agenten stammten
+  (Paket-Updates aus VS). Er hat gefragt statt sie mitzucommitten → eigener `chore`-Commit.
+- **92 rote Tests richtig eingeordnet:** Alle mit derselben `DockerUnavailableException`, also Docker Desktop
+  nicht gestartet, kein Codefehler. Ursache in einem Schritt statt Test für Test.
+- **Login-Sperre per DB-Abfrage diagnostiziert:** `LockoutEnd` des Admins in `AspNetUsers` gefunden und erklärt,
+  warum das Passwort aus den User-Secrets nicht mehr passt (der Seeder legt den Admin nur einmal an).
+  Ausweg über „Passwort vergessen“ und Mailpit statt weiter zu raten.
+- **Stand auf GitHub geprüft statt „erledigt“ zu glauben:** Zweimal fiel so auf, dass etwas fehlte: der
+  Compose-Branch war nie gepusht, und der Release war zum Zeitpunkt der Meldung noch nicht gemergt und getaggt.
+- Abwärtskompatibilität des Sensor-Endpoints mit einem eigenen Test abgesichert, statt sie nur zu behaupten.
+- Folgepunkte (Akku-Warnung, Plausibilitätsprüfung, Namen für S1/S2, Verlauf) direkt ins Backlog.
+
+**Fehler des Agenten**
+| # | Fehler | Wie gefunden | Lehre |
+|---|---|---|---|
+| 1 | Angekündigt, EF erzeuge für `Wassertank` ein Drop + Add. Tatsächlich erzeugte EF `RenameColumn("Wassertank" → "S2Input")`, weil beide Spalten `bit NOT NULL` sind. Alte Wasseralarme wären als „S2 aktiv“ erschienen | Ich habe die erzeugte Migration gelesen, bevor ich `Update-Database` ausgeführt habe | Generierte Migrationen immer lesen, besonders wenn eine Spalte wegfällt und eine gleichen Typs dazukommt. Der Agent beschreibt, was er erwartet, nicht was das Tool tut. |
+| 2 | Bei der Sensor-Änderung zuerst drei Rückfragen gestellt (Altdaten, Umfang, Branch), obwohl der fachliche Hintergrund (warum entfällt der Wasseralarm?) die wichtigere Information war | Ich habe abgebrochen und den Hardware-Kontext nachgeliefert | Bei fachlichen Änderungen gleich das *Warum* mitgeben, dann kann der Agent die Detailfragen selbst entscheiden. |
+| … | *(2a/2b: eigene Erinnerungen ergänzen)* | | |
+
+### Meine Erkenntnisse
+*(Leitfragen, bitte in eigenen Worten)*
+- Was macht der Migrator als eigener Container besser als `Database.Migrate()` beim API-Start?
+- Welche Healthcheck-Reihenfolge in Compose war nötig und warum reicht `depends_on` allein nicht?
+- Rebase statt Merge beim Nachziehen des Compose-Branches: wie hat sich das angefühlt im Vergleich zum
+  Merge-Commit aus Phase 1?
+- „Rebase and merge“ auf GitHub: was bedeuten die neuen Hashes für Tags und lokale Branches?
+- Wo habe ich diesmal Zwischenfragen gestellt (Aspire-Request, Login), und hat das geholfen?
+
+### Belege
+- PRs: #9 (2a), #11 (2b), #13 (2c), #12 (Sensor-Payload), Release-PR *(Nummer ergänzen)*
+- Images: `IotWelt.API/Dockerfile`, `MyOit.Portal/Dockerfile` · Compose: `compose.yaml`, `.env.example`
+- Runbook und Übungen: `docs/staging.md`
+- Von Hand korrigierte Migration: `IotWelt.API/Migrations/20261106194228_SensorKontakteUndAkku.cs`
+- Tag `v0.6.0` (nach dem Merge)
+
+### Lebenslauf-tauglich (nur wenn selbst nachvollzogen)
+- [ ] Container-Images für ASP.NET Core / Blazor (Multi-Stage, Layer-Cache, Nicht-Root)
+- [ ] Staging-Umgebung mit Docker Compose: Healthchecks, Startreihenfolge, Volumes, Secrets per `.env`
+- [ ] Datenbankmigrationen als eigener Schritt (EF-Core-Migrations-Bundle) statt beim App-Start
+- [ ] Git: Rebase paralleler Feature-Branches, Konflikte aufgelöst, SemVer-Release mit annotiertem Tag
