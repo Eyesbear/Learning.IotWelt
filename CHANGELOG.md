@@ -8,6 +8,10 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+---
+
+## [0.6.0] — 2026-11-06 — Phase 2: Docker/Compose-Staging
+
 ### Added
 - **Staging mit Docker Compose** (`compose.yaml`): SQL Server, Migrator, API (5080), Portal (5081), Mailpit (8025) und Aspire-Dashboard standalone (18888) für Logs und Traces. Start in fester Reihenfolge über Healthchecks (`sql` healthy → Migrator Exit 0 → `api` healthy → `portal`), Daten und Data-Protection-Schlüssel in Volumes
 - `.env.example` als Vorlage für die Staging-Secrets (`.env` ist gitignored), Pflichtwerte bricht Compose mit klarer Meldung ab
