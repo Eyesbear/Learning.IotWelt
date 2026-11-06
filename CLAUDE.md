@@ -116,8 +116,9 @@ betroffene Seite/Endpoint einmal real ausprobiert, `CHANGELOG.md` ergänzt.
 Plan: Phase 0 Fundament (Git, CLAUDE.md, Tests) → 1 eigene Benutzerverwaltung (Azure-Ausbau) →
 2 Docker/Compose-Staging → 3 GitHub Actions → 4 myASP.NET-Produktion → 5 MAUI → 6 SQL-Tuning, ESP32, Zeitzonen.
 
-**Stand:** Phase 0 und 1 abgeschlossen (v0.5.0, eigene Benutzerverwaltung, kein Azure mehr im Code).
-Als Nächstes Phase 2 (Docker/Compose-Staging). Letzter Azure-Stand: Git-Tag `v0.4.1-azure`.
+**Stand:** Phase 0–2 abgeschlossen (v0.6.0: eigene Benutzerverwaltung, kein Azure mehr im Code,
+Staging per Docker Compose, Runbook `docs/staging.md`). Als Nächstes Phase 3 (GitHub Actions).
+Letzter Azure-Stand: Git-Tag `v0.4.1-azure`.
 `MIGRATION_SPEC_V2.0.md`: umgesetzte Auth-Architektur und offene Punkte für myASP.NET (Phase 4).
 
 Lernjournal: `ZZZ_Learning/Lernjournal.md` — nach jeder Phase ergänzen.
