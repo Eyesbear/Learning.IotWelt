@@ -9,6 +9,9 @@ Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
 ## [Unreleased]
 
 ### Added
+- **Staging mit Docker Compose** (`compose.yaml`): SQL Server, Migrator, API (5080), Portal (5081), Mailpit (8025) und Aspire-Dashboard standalone (18888) für Logs und Traces. Start in fester Reihenfolge über Healthchecks (`sql` healthy → Migrator Exit 0 → `api` healthy → `portal`), Daten und Data-Protection-Schlüssel in Volumes
+- `.env.example` als Vorlage für die Staging-Secrets (`.env` ist gitignored), Pflichtwerte bricht Compose mit klarer Meldung ab
+- Runbook in `docs/staging.md`: `.env` anlegen, Starten, Logs, Update, Zurücksetzen
 - **Container-Images** für API, Migrator und Portal: `IotWelt.API/Dockerfile` (Stufen `build`, `migrator`, `final`) und `MyOit.Portal/Dockerfile`, Multi-Stage-Build mit Restore-Layer vor dem Quellcode, Nicht-Root-User, Port 8080, Verzeichnis `/keys` für Data-Protection-Schlüssel
 - **Migrator** als EF-Core-Migrations-Bundle (framework-dependent auf `aspnet:10.0`, teilt sich die Basis-Layer mit der API): legt das Schema an und endet, die API selbst ändert das Schema nie
 - `.dockerignore` im Repo-Root (`bin/`, `obj/`, `.vs/`, `.git/`, Secrets, `.env`)

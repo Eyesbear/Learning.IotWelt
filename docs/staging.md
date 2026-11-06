@@ -1,11 +1,101 @@
 # Staging mit Docker
 
 Staging läuft im LAN in Linux-Containern (Docker Desktop auf Gandalf), ohne Visual Studio, mit echtem SQL Server.
-Ports: **API 5080**, **Portal 5081**. Aspire (F5, API auf 5013) läuft parallel weiter.
+Aspire (F5, API auf 5013) läuft parallel weiter.
 
-Stand PR 2b: Images und Handbetrieb ohne Compose. Compose und Runbook folgen in PR 2c.
+| Dienst | Adresse | Zweck |
+|---|---|---|
+| Portal | `http://<gandalf-ip>:5081` | Web-Frontend |
+| API | `http://<gandalf-ip>:5080` | REST-API, Ziel für die ESP32 (`POST /api/sensor`) |
+| Mailpit | `http://<gandalf-ip>:8025` | alle Mails der API (Bestätigung, Reset, Einladung) |
+| Aspire-Dashboard | `http://<gandalf-ip>:18888` | Logs, Traces, Metriken von API und Portal |
+| SQL Server | `localhost,14330` | nur vom Gandalf selbst (SSMS), Login `sa` |
 
-## Images
+## Runbook (Docker Compose)
+
+Alle Befehle im Repo-Root. Die Dienste stehen in `compose.yaml`, die Secrets in `.env`.
+
+### Einmalig: `.env` anlegen
+
+```powershell
+Copy-Item .env.example .env
+notepad .env
+```
+
+Werte eintragen (Erklärungen stehen in der Datei):
+- `MSSQL_SA_PASSWORD`: Komplexitätsregeln von SQL Server, ohne `;` und `$`
+- `JWT_SIGNING_KEY`: erzeugen mit
+  ```powershell
+  $b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); [Convert]::ToBase64String($b)
+  ```
+- `PORTAL_PUBLIC_URL`: LAN-Adresse des Portals, z. B. `http://192.168.178.20:5081` (IP mit `ipconfig`).
+  Daraus baut die API die Links in den Mails. Mit `localhost` funktionieren sie nur auf Gandalf selbst.
+- `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD`: optional, erster System-Admin
+
+`.env` ist gitignored. `docker compose config` zeigt die fertige Konfiguration mit eingesetzten Werten
+(Achtung: inklusive der Secrets, nicht in Tickets oder Chats kopieren).
+
+### Starten
+
+```powershell
+docker compose up -d --build
+docker compose ps -a
+```
+
+Reihenfolge (über `depends_on`): `sql` wird *healthy* → `migrator` legt das Schema an und endet mit Exit 0 →
+`api` startet und wird *healthy* → `portal` startet. Der erste Start dauert wegen SQL Server ca. eine Minute.
+`docker compose ps -a` zeigt dann alle Dienste als `running (healthy)`, den Migrator als `exited (0)`.
+
+Login für das Aspire-Dashboard (Token wechselt bei jedem Neustart des Dashboards):
+
+```powershell
+docker compose logs dashboard | Select-String "login"
+```
+
+### Logs
+
+```powershell
+docker compose logs -f api                 # ein Dienst, live
+docker compose logs --since 10m            # alle Dienste, letzte 10 Minuten
+docker compose logs migrator               # was hat die Migration gemacht?
+```
+
+Strukturierter geht es im Aspire-Dashboard (Port 18888).
+
+### Update (neuer Code)
+
+```powershell
+git pull
+docker compose up -d --build
+```
+
+Compose baut die Images neu und ersetzt nur die Container, deren Image oder Konfiguration sich geändert hat.
+Der Migrator läuft dabei erneut und wendet neue Migrationen an. Daten und Schlüssel bleiben in den Volumes.
+
+### Stoppen und Zurücksetzen
+
+```powershell
+docker compose stop        # anhalten, Container bleiben
+docker compose down        # Container und Netz entfernen, Volumes (Daten) bleiben
+docker compose down -v     # ALLES zurücksetzen: auch Datenbank und Schlüssel löschen
+```
+
+Nach `down -v` ist die Datenbank leer, alle Logins sind weg, und die Volumes werden beim nächsten `up` neu angelegt.
+
+### Bekannte Einschränkungen
+
+- Nach einem Neustart des Portals ist eine Neuanmeldung nötig: Die Tokens liegen nur im Speicher
+  (persistente Ablage siehe `docs/backlog.md`, Phase 4). Cookies und Formulare bleiben dank der Schlüssel im Volume gültig.
+- Mailpit hat keine Anmeldung. Alle Mails sind für jeden im LAN lesbar, deshalb nur mit Testadressen arbeiten.
+- Von einem anderen Gerät im LAN nicht erreichbar? Zuerst auf Gandalf selbst `http://localhost:5081` prüfen.
+  Klappt das, blockiert meist die Windows-Firewall die Ports 5080/5081/8025/18888 (Docker Desktop legt nicht
+  immer passende Regeln an).
+
+## Images und Handbetrieb
+
+Die folgenden Abschnitte stammen aus PR 2b: Wie die Images gebaut sind und wie man sie ohne Compose betreibt.
+
+### Images
 
 | Image | Dockerfile | Inhalt |
 |---|---|---|
@@ -39,7 +129,7 @@ Schlüssel erzeugen (Windows PowerShell 5.1):
 $b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); [Convert]::ToBase64String($b)
 ```
 
-## Review-Checkliste für Dockerfiles
+### Review-Checkliste für Dockerfiles
 
 - [ ] **Basis-Images mit Tag** (`sdk:10.0`, `aspnet:10.0`), nie ohne Tag (= `latest`)
 - [ ] **Restore-Layer vor dem Quellcode**: erst `*.csproj` + `Directory.Build.props`, `dotnet restore`, dann der Rest
@@ -52,9 +142,9 @@ $b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create
       (sichtbar an „transferring context“ in der Build-Ausgabe)
 - [ ] **Schreibbare Verzeichnisse** (`/keys`) gehören dem App-User, sonst scheitert das Volume an Rechten
 
-## Übungen
+### Übungen
 
-### 1 · Bauen und Größen vergleichen
+#### 1 · Bauen und Größen vergleichen
 
 ```powershell
 docker build -f IotWelt.API/Dockerfile -t iotwelt-api .
@@ -84,7 +174,7 @@ das, was ein Image allein mitbringt. API, Migrator und Portal teilen sich die Ba
 zusammen nur gut 500 MB statt der Summe der Einzelgrößen. Darum läuft auch der Migrator auf `aspnet:10.0`
 statt self-contained auf `runtime-deps:10.0`: Einzeln wäre er kaum kleiner, aber er teilte nichts mit der API.
 
-### 2 · Layer-Cache beobachten
+#### 2 · Layer-Cache beobachten
 
 1. Ohne Änderung erneut bauen: alle Schritte `CACHED`.
 2. Eine `.cs`-Datei der API ändern (z. B. Kommentar), neu bauen: `restore` bleibt `CACHED`, ab `COPY IotWelt.API/` läuft alles neu.
@@ -93,7 +183,7 @@ statt self-contained auf `runtime-deps:10.0`: Einzeln wäre er kaum kleiner, abe
 
 Änderungen danach zurücknehmen (`git restore …`).
 
-### 3 · Von Hand ohne Compose
+#### 3 · Von Hand ohne Compose
 
 So wird sichtbar, was Compose in PR 2c übernimmt: Netzwerk, Reihenfolge, Variablen, Volumes.
 
@@ -152,7 +242,7 @@ Erwartete Warnungen in `docker logs` (kein Fehler):
 Tipp: Mehrzeilige Befehle brechen in PowerShell, wenn nach einem Backtick noch ein Leerzeichen steht.
 `docker ps -a` zeigt dann, dass der Container nie angelegt wurde. Im Zweifel den Befehl als eine Zeile eingeben.
 
-### 4 · Container untersuchen
+#### 4 · Container untersuchen
 
 ```powershell
 docker logs -f api                          # Logs live (Strg+C beendet nur die Anzeige)

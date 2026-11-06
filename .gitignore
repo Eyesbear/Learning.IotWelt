@@ -363,3 +363,6 @@ MigrationBackup/
 FodyWeavers.xsd
 # Claude Code – persönliche Einstellungen
 .claude/settings.local.json
+
+# Staging-Secrets (Docker Compose), Vorlage: .env.example
+.env

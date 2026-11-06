@@ -1,0 +1,123 @@
+# IotWelt Staging — Docker Compose im LAN (Gandalf). Anleitung: docs/staging.md
+#   docker compose up -d --build
+# Secrets kommen aus .env (gitignored, Vorlage .env.example), nie aus dieser Datei.
+name: iotwelt-staging
+
+services:
+
+  # ---- Datenbank -----------------------------------------------------------------------------------
+  sql:
+    image: mcr.microsoft.com/mssql/server:2022-latest   # dieselbe Version wie in den Tests (Testcontainers)
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?MSSQL_SA_PASSWORD fehlt in .env}
+    volumes:
+      - mssql-data:/var/opt/mssql
+    ports:
+      - "127.0.0.1:14330:1433"   # nur vom Host aus (SSMS: localhost,14330), nicht aus dem LAN
+    healthcheck:
+      # $$ = Variable erst im Container auflösen, nicht schon beim Einlesen der Datei durch Compose
+      test: /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -Q "SELECT 1" -b -o /dev/null
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  # ---- Schema: läuft einmal, sobald SQL bereit ist, und endet ----------------------------------------
+  migrator:
+    image: iotwelt-migrator
+    build:
+      context: .
+      dockerfile: IotWelt.API/Dockerfile
+      target: migrator
+    environment:
+      ConnectionStrings__iotweltdb: Server=sql,1433;Database=IotWeltDb;User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True
+    depends_on:
+      sql:
+        condition: service_healthy
+    restart: "no"
+
+  # ---- API (Port 5080, auch für die ESP32 im LAN) ---------------------------------------------------
+  api:
+    image: iotwelt-api
+    build:
+      context: .
+      dockerfile: IotWelt.API/Dockerfile
+      target: final
+    environment:
+      ASPNETCORE_ENVIRONMENT: Staging
+      ConnectionStrings__iotweltdb: Server=sql,1433;Database=IotWeltDb;User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:?JWT_SIGNING_KEY fehlt in .env}
+      App__PortalBaseUrl: ${PORTAL_PUBLIC_URL:?PORTAL_PUBLIC_URL fehlt in .env}
+      SeedAdmin__Email: ${SEED_ADMIN_EMAIL:-}
+      SeedAdmin__Password: ${SEED_ADMIN_PASSWORD:-}
+      Smtp__Host: mailpit
+      Smtp__Port: "1025"
+      Smtp__Security: None
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://dashboard:18889
+      OTEL_SERVICE_NAME: iotwelt-api
+    volumes:
+      - api-keys:/keys
+    ports:
+      - "5080:8080"
+    depends_on:
+      migrator:
+        condition: service_completed_successfully   # erst starten, wenn das Schema steht (Exit 0)
+      mailpit:
+        condition: service_started
+    healthcheck:
+      test: curl -fsS http://localhost:8080/health || exit 1   # /health prüft auch die Datenbank
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  # ---- Portal (Port 5081) --------------------------------------------------------------------------
+  portal:
+    image: iotwelt-portal
+    build:
+      context: .
+      dockerfile: MyOit.Portal/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Staging   # API-Adresse http://api:8080 steht in appsettings.Staging.json
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://dashboard:18889
+      OTEL_SERVICE_NAME: myoit-portal
+    volumes:
+      - portal-keys:/keys
+    ports:
+      - "5081:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: curl -fsS http://localhost:8080/alive || exit 1   # /alive: nur der Prozess, nicht die API
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  # ---- Mailpit: fängt alle Mails der API ab, Web-UI auf 8025 ------------------------------------------
+  mailpit:
+    image: axllent/mailpit:v1.31
+    ports:
+      - "8025:8025"   # SMTP (1025) bleibt im Compose-Netz, nur die API verschickt
+    restart: unless-stopped
+
+  # ---- Aspire-Dashboard standalone: Logs, Traces, Metriken wie lokal --------------------------------
+  dashboard:
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:13.4
+    environment:
+      # OTLP-Empfang (18889) ist nur im Compose-Netz erreichbar, daher ohne Anmeldung.
+      # Die Web-UI bleibt geschützt: Login-Link mit Token steht in "docker compose logs dashboard".
+      Dashboard__Otlp__AuthMode: Unsecured
+    ports:
+      - "18888:18888"
+    restart: unless-stopped
+
+volumes:
+  mssql-data:
+  api-keys:
+  portal-keys:
