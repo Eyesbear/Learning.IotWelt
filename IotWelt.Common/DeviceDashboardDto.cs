@@ -10,7 +10,9 @@ public class DeviceDashboardDto
     public DateTime? ZuerstGesehen { get; set; }
     public double? Temperatur { get; set; }
     public double? RelativeFeuchte { get; set; }
-    public bool? Wassertank { get; set; }
+    public double? BatterieSpannung { get; set; }
+    public bool? S1Input { get; set; }
+    public bool? S2Input { get; set; }
     public DateTime? ZuletztGemeldet { get; set; }
     public string? Caption { get; set; }
     public string? CustomerId { get; set; }

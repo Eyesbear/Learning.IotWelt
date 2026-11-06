@@ -14,9 +14,9 @@ Content-Type: application/json
   "hardwareId": "TEST-HTTP-0001",
   "customer_id": "",
   "deviceName": "Testsensor aus .http",
-  "temperatur": 21.5,
+  "temperatur": 19.0,
   "relativeFeuchte": 45.0,
-  "wasserAlarm": false
+  "wasserAlarm": true
 }
 
 ###

@@ -48,16 +48,18 @@ else
                                     <div class="small text-muted">Luftfeuchte</div>
                                 </div>
                             </div>
-                            <div class="col-12">
-                                @if (device.Wassertank == true)
-                                {
-                                    <div class="p-2 rounded bg-danger text-white fw-semibold">Wasseralarm aktiv</div>
-                                }
-                                else
-                                {
-                                    <div class="p-2 rounded bg-light text-muted">Wassertank OK</div>
-                                }
+                            <div class="col-6">
+                                <div class="p-2 rounded @ContactCss(device.S1Input)">S1 @FormatContact(device.S1Input)</div>
                             </div>
+                            <div class="col-6">
+                                <div class="p-2 rounded @ContactCss(device.S2Input)">S2 @FormatContact(device.S2Input)</div>
+                            </div>
+                            @if (device.BatterieSpannung.HasValue)
+                            {
+                                <div class="col-12">
+                                    <div class="p-2 rounded bg-light text-muted">Akku @device.BatterieSpannung.Value.ToString("F2") V</div>
+                                </div>
+                            }
                         </div>
                     </div>
                     <div class="card-footer small text-muted d-flex justify-content-between align-items-center">
@@ -116,6 +118,13 @@ else
 
     private static string FormatHumidity(double? h)
         => h.HasValue ? $"{h.Value:F1} %" : "—";
+
+    // Kontakteingänge: aktiv hervorheben, ohne Messwert neutral
+    private static string FormatContact(bool? active)
+        => active switch { true => "aktiv", false => "inaktiv", null => "—" };
+
+    private static string ContactCss(bool? active)
+        => active == true ? "bg-warning fw-semibold" : "bg-light text-muted";
 
     private static string FormatTime(DateTime? dt)
         => dt.HasValue ? dt.Value.ToLocalTime().ToString("HH:mm:ss") : "—";

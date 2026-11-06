@@ -99,7 +99,7 @@ public class DevicesControllerTests(ApiFactory factory)
         var sensor = factory.CreateClient();
 
         await sensor.PostAsJsonAsync("/api/sensor", new { hardwareId = hw, customer_id = user.CustomerId, deviceName = "Bad", temperatur = 20.0, relativeFeuchte = 50.0 });
-        await sensor.PostAsJsonAsync("/api/sensor", new { hardwareId = hw, customer_id = user.CustomerId, deviceName = "Bad", temperatur = 23.5, relativeFeuchte = 55.0, wasserAlarm = true });
+        await sensor.PostAsJsonAsync("/api/sensor", new { hardwareId = hw, customer_id = user.CustomerId, deviceName = "Bad", temperatur = 23.5, relativeFeuchte = 55.0, batterieSpannung = 3.71, s1Input = false, s2Input = true });
 
         var dashboard = await user.Client.GetFromJsonAsync<List<DeviceDashboardDto>>("/api/devices/dashboard");
 
@@ -107,7 +107,9 @@ public class DevicesControllerTests(ApiFactory factory)
         Assert.Equal(hw, kachel.HardwareId);
         Assert.Equal(23.5, kachel.Temperatur);
         Assert.Equal(55.0, kachel.RelativeFeuchte);
-        Assert.True(kachel.Wassertank);
+        Assert.Equal(3.71, kachel.BatterieSpannung);
+        Assert.False(kachel.S1Input);
+        Assert.True(kachel.S2Input);
         Assert.NotNull(kachel.ZuletztGemeldet);
     }
 

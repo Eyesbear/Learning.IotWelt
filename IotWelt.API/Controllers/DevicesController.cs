@@ -60,7 +60,9 @@ public class DevicesController(AppDbContext db, CurrentAccount current) : Contro
                 ZuerstGesehen = d.ZuerstGesehen,
                 Temperatur = log?.Temperatur,
                 RelativeFeuchte = log?.RelativeFeuchte,
-                Wassertank = log?.Wassertank,
+                BatterieSpannung = log?.BatterieSpannung,
+                S1Input = log?.S1Input,
+                S2Input = log?.S2Input,
                 ZuletztGemeldet = log?.Zeitstempel
             };
         });
