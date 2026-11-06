@@ -101,7 +101,9 @@ public class SensorController(AppDbContext db, ILogger<SensorController> logger)
             DeviceId = device.Id,
             Temperatur = data.Temperatur,
             RelativeFeuchte = data.RelativeFeuchte,
-            Wassertank = data.WasserAlarm,
+            BatterieSpannung = data.BatterieSpannung,
+            S1Input = data.S1Input,
+            S2Input = data.S2Input,
             Zeitstempel = DateTime.UtcNow
         });
 

@@ -23,7 +23,8 @@ public class SensorControllerTests(ApiFactory factory)
         var response = await ReportAsync(new
         {
             hardwareId = hw, customer_id = customer, deviceName = "Keller",
-            temperatur = 18.5, relativeFeuchte = 62.0, wasserAlarm = true
+            temperatur = 18.5, relativeFeuchte = 62.0,
+            batterieSpannung = 3.92, s1Input = true, s2Input = false
         });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -36,7 +37,30 @@ public class SensorControllerTests(ApiFactory factory)
         var log = await factory.WithDbAsync(db => db.RaumKlimaLogs.SingleAsync(l => l.DeviceId == device.Id));
         Assert.Equal(18.5, log.Temperatur);
         Assert.Equal(62.0, log.RelativeFeuchte);
-        Assert.True(log.Wassertank);
+        Assert.Equal(3.92, log.BatterieSpannung);
+        Assert.True(log.S1Input);
+        Assert.False(log.S2Input);
+    }
+
+    [Fact]
+    public async Task Payload_der_alten_Firmware_mit_wasserAlarm_wird_weiter_angenommen()
+    {
+        // Abwärtskompatibilität: Firmware vor S1/S2 und Akku schickt noch wasserAlarm und keine neuen Felder.
+        // Unbekannte Felder ignoriert System.Text.Json, fehlende bekommen ihren Standardwert.
+        var hw = TestData.HardwareId();
+
+        var response = await ReportAsync(new
+        {
+            hardwareId = hw, customer_id = TestData.CustomerId(), deviceName = "Alt",
+            temperatur = 20.0, relativeFeuchte = 50.0, wasserAlarm = true
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var device = await factory.WithDbAsync(db => db.Devices.SingleAsync(d => d.HardwareId == hw));
+        var log = await factory.WithDbAsync(db => db.RaumKlimaLogs.SingleAsync(l => l.DeviceId == device.Id));
+        Assert.Null(log.BatterieSpannung);
+        Assert.False(log.S1Input);
+        Assert.False(log.S2Input);
     }
 
     [Fact]

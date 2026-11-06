@@ -258,17 +258,23 @@ namespace IotWelt.API.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<double?>("BatterieSpannung")
+                        .HasColumnType("float");
+
                     b.Property<int>("DeviceId")
                         .HasColumnType("int");
 
                     b.Property<double?>("RelativeFeuchte")
                         .HasColumnType("float");
 
+                    b.Property<bool>("S1Input")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("S2Input")
+                        .HasColumnType("bit");
+
                     b.Property<double?>("Temperatur")
                         .HasColumnType("float");
-
-                    b.Property<bool>("Wassertank")
-                        .HasColumnType("bit");
 
                     b.Property<DateTime>("Zeitstempel")
                         .HasColumnType("datetime2");
